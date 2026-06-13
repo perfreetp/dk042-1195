@@ -1,8 +1,17 @@
-export type InspirationStatus = 'draft' | 'reviewing' | 'approved' | 'experimenting' | 'completed' | 'archived';
+export type InspirationStatus = 'draft' | 'reviewing' | 'approved' | 'experimenting' | 'completed' | 'archived' | 'incomplete';
 
 export type ExperimentStatus = 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
 
 export type Severity = 'low' | 'medium' | 'high';
+
+export type HypothesisVerdict = 'confirmed' | 'refuted' | 'inconclusive' | 'pending';
+
+export interface HypothesisItem {
+  id: string;
+  text: string;
+  verdict: HypothesisVerdict;
+  verdictNote: string;
+}
 
 export interface Inspiration {
   id: string;
@@ -19,6 +28,9 @@ export interface Inspiration {
   tags: string[];
   relatedProducts: string[];
   hypotheses: string[];
+  hypothesisItems: HypothesisItem[];
+  sourceUrl: string;
+  isDraft: boolean;
   likes: number;
   isLiked: boolean;
   favorites: number;
@@ -70,6 +82,7 @@ export interface Experiment {
   scheduledTime: string;
   anchorId: string;
   anchorName: string;
+  hypothesisIds: string[];
   expectedMetrics: Metrics;
   actualMetrics?: Metrics;
   status: ExperimentStatus;
@@ -95,6 +108,12 @@ export interface RetrospectiveData {
   experimentId: string;
   issues: Issue[];
   actionItems: ActionItem[];
+  hypothesisVerdicts: Array<{
+    hypothesisId: string;
+    hypothesisText: string;
+    verdict: HypothesisVerdict;
+    note: string;
+  }>;
   summary: string;
   createdAt: string;
 }

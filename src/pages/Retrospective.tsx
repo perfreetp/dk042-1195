@@ -3,21 +3,29 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Eye, Heart, ShoppingCart, DollarSign, TrendingUp,
   AlertTriangle, CheckCircle, Clock, User, Plus, X, Check,
-  FileText, Lightbulb
+  FileText, Lightbulb, FlaskConical, LayoutDashboard, BarChart3,
+  Tag, MapPin, Package
 } from 'lucide-react';
 import { useAppStore } from '@/store';
-import type { Severity } from '@/types';
+import type { Severity, HypothesisVerdict } from '@/types';
 import {
   formatNumber, formatCurrency, formatDateTime, getStatusText, getStatusColor,
-  getSeverityColor, getSeverityText, cn
+  getSeverityColor, getSeverityText, getVerdictText, getVerdictColor, cn
 } from '@/utils/helpers';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
+interface HypothesisVerdictEntry {
+  hypothesisId: string;
+  hypothesisText: string;
+  verdict: HypothesisVerdict;
+  note: string;
+}
+
 export function Retrospective() {
   const { experimentId } = useParams<{ experimentId: string }>();
   const navigate = useNavigate();
-  const { experiments, inspirations, retrospectives, addRetrospective, updateRetrospective, updateExperiment, toggleActionItem } = useAppStore();
+  const { experiments, inspirations, retrospectives, products, addRetrospective, updateRetrospective, updateExperiment, toggleActionItem } = useAppStore();
 
   const experiment = useMemo(
     () => experiments.find((e) => e.id === experimentId),
@@ -41,6 +49,25 @@ export function Retrospective() {
     gmv: experiment?.actualMetrics?.gmv ?? 0,
   });
 
+  const [hypothesisVerdicts, setHypothesisVerdicts] = useState<HypothesisVerdictEntry[]>(() => {
+    if (existingRetrospective?.hypothesisVerdicts?.length) {
+      return existingRetrospective.hypothesisVerdicts;
+    }
+    if (!experiment || !inspiration) return [];
+    return experiment.hypothesisIds
+      .map((hId) => {
+        const item = inspiration.hypothesisItems.find((hi) => hi.id === hId);
+        if (!item) return null;
+        return {
+          hypothesisId: item.id,
+          hypothesisText: item.text,
+          verdict: 'pending' as HypothesisVerdict,
+          note: '',
+        };
+      })
+      .filter(Boolean) as HypothesisVerdictEntry[];
+  });
+
   const [issues, setIssues] = useState(existingRetrospective?.issues ?? []);
   const [actionItems, setActionItems] = useState(existingRetrospective?.actionItems ?? []);
   const [summary, setSummary] = useState(existingRetrospective?.summary ?? '');
@@ -51,7 +78,59 @@ export function Retrospective() {
   const [newActionItem, setNewActionItem] = useState({ task: '', assignee: '', dueDate: '' });
   const [showActionForm, setShowActionForm] = useState(false);
 
+  const [dashboardTab, setDashboardTab] = useState<'anchor' | 'festival' | 'category'>('anchor');
+
   const [saved, setSaved] = useState(false);
+
+  const dashboardData = useMemo(() => {
+    const completedExperiments = experiments.filter((e) => e.status === 'completed');
+    const experimentRetrosMap = new Map(retrospectives.map((r) => [r.experimentId, r]));
+
+    const buildGroups = (getKey: (exp: typeof completedExperiments[0], insp: typeof inspirations[0] | undefined) => string) => {
+      const groups: Record<string, { experiments: typeof completedExperiments; retrospectives: typeof retrospectives }> = {};
+      for (const exp of completedExperiments) {
+        const insp = inspirations.find((i) => i.id === exp.inspirationId);
+        const key = getKey(exp, insp);
+        if (!key) continue;
+        if (!groups[key]) groups[key] = { experiments: [], retrospectives: [] };
+        groups[key].experiments.push(exp);
+        const retro = experimentRetrosMap.get(exp.id);
+        if (retro) groups[key].retrospectives.push(retro);
+      }
+      return Object.entries(groups).map(([key, data]) => {
+        const totalGmv = data.experiments.reduce((sum, e) => sum + (e.actualMetrics?.gmv ?? 0), 0);
+        const avgConversion = data.experiments.length > 0
+          ? data.experiments.reduce((sum, e) => sum + (e.actualMetrics?.conversion ?? 0), 0) / data.experiments.length
+          : 0;
+        const allActionItems = data.retrospectives.flatMap((r) => r.actionItems);
+        const completedActions = allActionItems.filter((a) => a.completed).length;
+        const actionCompletionRate = allActionItems.length > 0
+          ? Math.round((completedActions / allActionItems.length) * 100)
+          : 0;
+        return {
+          key,
+          experimentCount: data.experiments.length,
+          totalGmv,
+          avgConversion,
+          actionCompletionRate,
+          totalActionItems: allActionItems.length,
+          completedActionItems: completedActions,
+        };
+      });
+    };
+
+    return {
+      byAnchor: buildGroups((exp) => exp.anchorName),
+      byFestival: buildGroups((_exp, insp) => insp?.festival || '未分类'),
+      byCategory: buildGroups((_exp, insp) => {
+        if (!insp) return '未分类';
+        const cats = insp.relatedProducts
+          .map((pid) => products.find((p) => p.id === pid)?.category)
+          .filter(Boolean);
+        return cats.length > 0 ? [...new Set(cats)].join('、') : '未分类';
+      }),
+    };
+  }, [experiments, inspirations, retrospectives, products]);
 
   if (!experiment) {
     return (
@@ -98,6 +177,18 @@ export function Retrospective() {
     setActionItems(actionItems.map((a) => a.id === id ? { ...a, completed: !a.completed } : a));
   };
 
+  const handleVerdictChange = (hypothesisId: string, verdict: HypothesisVerdict) => {
+    setHypothesisVerdicts((prev) =>
+      prev.map((hv) => hv.hypothesisId === hypothesisId ? { ...hv, verdict } : hv)
+    );
+  };
+
+  const handleVerdictNoteChange = (hypothesisId: string, note: string) => {
+    setHypothesisVerdicts((prev) =>
+      prev.map((hv) => hv.hypothesisId === hypothesisId ? { ...hv, note } : hv)
+    );
+  };
+
   const handleSave = () => {
     updateExperiment(experiment.id, {
       status: 'completed',
@@ -108,12 +199,14 @@ export function Retrospective() {
       updateRetrospective(existingRetrospective.id, {
         issues,
         actionItems,
+        hypothesisVerdicts,
         summary,
       });
     } else {
       addRetrospective(experiment.id, {
         issues,
         actionItems,
+        hypothesisVerdicts,
         summary,
       });
     }
@@ -162,6 +255,14 @@ export function Retrospective() {
       format: (v: number) => formatCurrency(v),
     },
   ];
+
+  const verdictOptions: HypothesisVerdict[] = ['confirmed', 'refuted', 'inconclusive', 'pending'];
+
+  const currentDashboardData = dashboardTab === 'anchor'
+    ? dashboardData.byAnchor
+    : dashboardTab === 'festival'
+      ? dashboardData.byFestival
+      : dashboardData.byCategory;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30">
@@ -317,6 +418,52 @@ export function Retrospective() {
             </div>
           </div>
         </div>
+
+        {hypothesisVerdicts.length > 0 && (
+          <div className="card p-6">
+            <h2 className="flex items-center gap-2 font-bold text-slate-800 text-lg mb-5">
+              <FlaskConical className="w-5 h-5 text-violet-500" />
+              假设验证结论
+            </h2>
+            <div className="space-y-4">
+              {hypothesisVerdicts.map((hv) => (
+                <div key={hv.hypothesisId} className="p-5 rounded-2xl bg-slate-50/80 border border-slate-100">
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-violet-100 text-violet-600 flex items-center justify-center shrink-0 mt-0.5">
+                      <FlaskConical className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 mb-3">{hv.hypothesisText}</p>
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        {verdictOptions.map((v) => (
+                          <button
+                            key={v}
+                            onClick={() => handleVerdictChange(hv.hypothesisId, v)}
+                            className={cn(
+                              'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                              hv.verdict === v
+                                ? getVerdictColor(v)
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            )}
+                          >
+                            {getVerdictText(v)}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={hv.note}
+                        onChange={(e) => handleVerdictNoteChange(hv.hypothesisId, e.target.value)}
+                        placeholder="添加验证备注（如具体数据、观察结论）..."
+                        className="input-field text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="card p-6">
@@ -510,6 +657,95 @@ export function Retrospective() {
           <p className="text-xs text-slate-400 mt-2">
             💡 好的复盘应该包含：数据结论、关键成功因素、失败教训、可复用SOP、后续优化建议
           </p>
+        </div>
+
+        <div className="card p-6">
+          <h2 className="flex items-center gap-2 font-bold text-slate-800 text-lg mb-5">
+            <LayoutDashboard className="w-5 h-5 text-cyan-500" />
+            团队复盘看板
+          </h2>
+          <p className="text-xs text-slate-400 mb-4">汇总所有已完成实验的复盘数据，按维度聚合分析</p>
+
+          <div className="flex gap-2 mb-5">
+            {([
+              { key: 'anchor' as const, label: '按主播', icon: User },
+              { key: 'festival' as const, label: '按节日', icon: MapPin },
+              { key: 'category' as const, label: '按品类', icon: Package },
+            ]).map(({ key, label, icon: TabIcon }) => (
+              <button
+                key={key}
+                onClick={() => setDashboardTab(key)}
+                className={cn(
+                  'flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all',
+                  dashboardTab === key
+                    ? 'bg-cyan-100 text-cyan-700 shadow-sm'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                )}
+              >
+                <TabIcon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {currentDashboardData.length === 0 ? (
+            <div className="text-center py-12">
+              <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-sm text-slate-400">暂无已完成的实验数据</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {currentDashboardData.map((group) => (
+                <div
+                  key={group.key}
+                  className="p-5 rounded-2xl bg-gradient-to-br from-white to-slate-50 border border-slate-100 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    {dashboardTab === 'anchor' && <User className="w-4 h-4 text-cyan-500" />}
+                    {dashboardTab === 'festival' && <MapPin className="w-4 h-4 text-rose-400" />}
+                    {dashboardTab === 'category' && <Tag className="w-4 h-4 text-amber-500" />}
+                    <h3 className="font-bold text-slate-800 text-sm truncate">{group.key}</h3>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">实验数</span>
+                      <span className="text-sm font-bold text-slate-800">{group.experimentCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">总 GMV</span>
+                      <span className="text-sm font-bold text-emerald-600">{formatCurrency(group.totalGmv)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">平均转化率</span>
+                      <span className="text-sm font-bold text-indigo-600">{group.avgConversion.toFixed(1)}%</span>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-slate-500">动作完成率</span>
+                        <span className="text-xs font-bold text-slate-700">
+                          {group.completedActionItems}/{group.totalActionItems} ({group.actionCompletionRate}%)
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className={cn(
+                            'h-full rounded-full transition-all duration-500',
+                            group.actionCompletionRate >= 80
+                              ? 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                              : group.actionCompletionRate >= 50
+                                ? 'bg-gradient-to-r from-amber-400 to-yellow-500'
+                                : 'bg-gradient-to-r from-rose-400 to-pink-500'
+                          )}
+                          style={{ width: `${group.actionCompletionRate}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

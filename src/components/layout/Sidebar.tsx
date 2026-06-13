@@ -1,11 +1,12 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Sparkles, Bookmark, Calendar, FileText, Home, Lightbulb } from 'lucide-react';
+import { Sparkles, Bookmark, Calendar, LayoutDashboard, Lightbulb } from 'lucide-react';
 import { cn } from '@/utils/helpers';
 
 const navItems = [
   { to: '/', icon: Sparkles, label: '灵感广场', description: '发现好创意' },
-  { to: '/collection', icon: Bookmark, label: '采集箱', description: '我的收藏' },
+  { to: '/collection', icon: Bookmark, label: '素材池', description: '采集灵感' },
   { to: '/experiments', icon: Calendar, label: '实验计划', description: '试播安排' },
+  { to: '/dashboard', icon: LayoutDashboard, label: '复盘看板', description: '数据汇总' },
 ];
 
 export function Sidebar() {

@@ -70,6 +70,7 @@ export function getStatusText(status: string): string {
     experimenting: '实验中',
     completed: '已完成',
     archived: '已归档',
+    incomplete: '待补全',
     scheduled: '待执行',
     ongoing: '进行中',
     cancelled: '已取消',
@@ -85,11 +86,32 @@ export function getStatusColor(status: string): string {
     experimenting: 'tag-orange',
     completed: 'tag-green',
     archived: 'tag-red',
+    incomplete: 'tag-amber',
     scheduled: 'tag-indigo',
     ongoing: 'tag-orange',
     cancelled: 'tag-red',
   };
   return colorMap[status] || 'tag-indigo';
+}
+
+export function getVerdictText(verdict: string): string {
+  const map: Record<string, string> = {
+    confirmed: '已验证',
+    refuted: '已推翻',
+    inconclusive: '不确定',
+    pending: '待验证',
+  };
+  return map[verdict] || verdict;
+}
+
+export function getVerdictColor(verdict: string): string {
+  const map: Record<string, string> = {
+    confirmed: 'tag-green',
+    refuted: 'tag-red',
+    inconclusive: 'tag-amber',
+    pending: 'tag-indigo',
+  };
+  return map[verdict] || 'tag-indigo';
 }
 
 export function getSeverityColor(severity: string): string {

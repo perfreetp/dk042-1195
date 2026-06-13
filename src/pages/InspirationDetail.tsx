@@ -3,12 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Heart, Bookmark, Calendar, Users, DollarSign, Link, Image,
   Star, Tag, ShoppingBag, Lightbulb, MessageCircle, Send, Plus, X,
-  ExternalLink, Clock, CheckCircle, User, TrendingUp
+  ExternalLink, Clock, CheckCircle, User, TrendingUp, FlaskConical, Link2
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import {
   formatCurrency, formatDateTime, getStatusText, getStatusColor,
-  getRelativeTime, cn
+  getRelativeTime, cn, getVerdictText, getVerdictColor
 } from '@/utils/helpers';
 
 export function InspirationDetail() {
@@ -28,6 +28,8 @@ export function InspirationDetail() {
   const [hypothesisInput, setHypothesisInput] = useState('');
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [showProductPicker, setShowProductPicker] = useState(false);
+  const [linkInput, setLinkInput] = useState('');
+  const [imageInput, setImageInput] = useState('');
 
   const inspiration = useMemo(
     () => inspirations.find((i) => i.id === id),
@@ -65,6 +67,18 @@ export function InspirationDetail() {
     );
   }
 
+  const hypothesisList = inspiration.hypothesisItems.length > 0
+    ? inspiration.hypothesisItems.map((h, idx) => ({
+        id: h.id || `h-${idx}`,
+        text: h.text,
+        verdict: h.verdict as string | undefined,
+      }))
+    : inspiration.hypotheses.map((h, idx) => ({
+        id: `h-${idx}`,
+        text: h,
+        verdict: undefined as string | undefined,
+      }));
+
   const handleSubmitComment = () => {
     if (!commentText.trim()) return;
     addComment(inspiration.id, commentText);
@@ -90,13 +104,20 @@ export function InspirationDetail() {
 
   const handleAddHypothesis = () => {
     if (!hypothesisInput.trim()) return;
-    updateInspiration(inspiration.id, { hypotheses: [...inspiration.hypotheses, hypothesisInput.trim()] });
+    const newId = `h-${Date.now()}`;
+    updateInspiration(inspiration.id, {
+      hypotheses: [...inspiration.hypotheses, hypothesisInput.trim()],
+      hypothesisItems: [...inspiration.hypothesisItems, { id: newId, text: hypothesisInput.trim(), verdict: 'pending' as const, verdictNote: '' }],
+    });
     setHypothesisInput('');
   };
 
   const handleRemoveHypothesis = (idx: number) => {
     updateInspiration(inspiration.id, {
       hypotheses: inspiration.hypotheses.filter((_, i) => i !== idx),
+      hypothesisItems: inspiration.hypothesisItems.length > idx
+        ? inspiration.hypothesisItems.filter((_, i) => i !== idx)
+        : inspiration.hypothesisItems,
     });
   };
 
@@ -116,6 +137,26 @@ export function InspirationDetail() {
   const handleSaveProducts = () => {
     updateInspiration(inspiration.id, { relatedProducts: selectedProducts });
     setShowProductPicker(false);
+  };
+
+  const handleAddLink = () => {
+    if (!linkInput.trim()) return;
+    updateInspiration(inspiration.id, { referenceLinks: [...inspiration.referenceLinks, linkInput.trim()] });
+    setLinkInput('');
+  };
+
+  const handleRemoveLink = (idx: number) => {
+    updateInspiration(inspiration.id, { referenceLinks: inspiration.referenceLinks.filter((_, i) => i !== idx) });
+  };
+
+  const handleAddImage = () => {
+    if (!imageInput.trim()) return;
+    updateInspiration(inspiration.id, { materialImages: [...inspiration.materialImages, imageInput.trim()] });
+    setImageInput('');
+  };
+
+  const handleRemoveImage = (idx: number) => {
+    updateInspiration(inspiration.id, { materialImages: inspiration.materialImages.filter((_, i) => i !== idx) });
   };
 
   return (
@@ -228,44 +269,94 @@ export function InspirationDetail() {
             </div>
           </div>
 
-          {inspiration.materialImages.length > 0 && (
-            <div className="card p-6">
-              <h3 className="flex items-center gap-2 font-bold text-slate-800 mb-4">
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="flex items-center gap-2 font-bold text-slate-800">
                 <Image className="w-5 h-5 text-indigo-500" />
                 素材图片
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {inspiration.materialImages.map((img, idx) => (
-                  <div key={idx} className="aspect-square rounded-xl overflow-hidden bg-slate-100">
-                    <img src={img} alt={`素材${idx + 1}`} className="w-full h-full object-cover" />
-                  </div>
-                ))}
-              </div>
             </div>
-          )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              {inspiration.materialImages.map((img, idx) => (
+                <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden bg-slate-100">
+                  <img src={img} alt={`素材${idx + 1}`} className="w-full h-full object-cover" />
+                  <button
+                    onClick={() => handleRemoveImage(idx)}
+                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => {}}
+                className="aspect-square rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:text-indigo-500 hover:border-indigo-300 transition-colors"
+              >
+                <Plus className="w-6 h-6 mb-1" />
+                <span className="text-xs">添加图片</span>
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={imageInput}
+                onChange={(e) => setImageInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddImage())}
+                placeholder="输入图片 URL"
+                className="input-field text-sm py-2"
+              />
+              <button onClick={handleAddImage} className="btn-ghost px-3">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
 
-          {inspiration.referenceLinks.length > 0 && (
-            <div className="card p-6">
-              <h3 className="flex items-center gap-2 font-bold text-slate-800 mb-4">
-                <Link className="w-5 h-5 text-indigo-500" />
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="flex items-center gap-2 font-bold text-slate-800">
+                <Link2 className="w-5 h-5 text-indigo-500" />
                 参考链接
               </h3>
-              <div className="space-y-2">
-                {inspiration.referenceLinks.map((url, idx) => (
-                  <a
-                    key={idx}
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-brand-primary transition-colors"
-                  >
-                    <ExternalLink className="w-4 h-4 shrink-0" />
-                    <span className="text-sm truncate">{url}</span>
-                  </a>
-                ))}
-              </div>
             </div>
-          )}
+            <div className="space-y-2 mb-4">
+              {inspiration.referenceLinks.length === 0 ? (
+                <p className="text-center text-sm text-slate-400 py-4">暂无参考链接，点击下方添加</p>
+              ) : (
+                inspiration.referenceLinks.map((url, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50 group transition-colors">
+                    <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-slate-600 hover:text-brand-primary truncate flex-1"
+                    >
+                      {url}
+                    </a>
+                    <button
+                      onClick={() => handleRemoveLink(idx)}
+                      className="text-slate-300 hover:text-rose-500 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={linkInput}
+                onChange={(e) => setLinkInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLink())}
+                placeholder="输入参考链接 URL"
+                className="input-field text-sm py-2"
+              />
+              <button onClick={handleAddLink} className="btn-ghost px-3">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
 
           {relatedProducts.length > 0 && (
             <div className="card p-6">
@@ -288,19 +379,32 @@ export function InspirationDetail() {
             </div>
           )}
 
-          {inspiration.hypotheses.length > 0 && (
+          {hypothesisList.length > 0 && (
             <div className="card p-6">
               <h3 className="flex items-center gap-2 font-bold text-slate-800 mb-4">
                 <Lightbulb className="w-5 h-5 text-amber-500" />
                 待验证假设
               </h3>
               <div className="space-y-2">
-                {inspiration.hypotheses.map((h, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/50 border border-amber-100">
+                {hypothesisList.map((h, idx) => (
+                  <div key={h.id} className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/50 border border-amber-100">
                     <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-bold text-amber-600">{idx + 1}</span>
                     </div>
-                    <p className="text-sm text-slate-700">{h}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm text-slate-700">{h.text}</p>
+                        {h.verdict && (
+                          <span className={getVerdictColor(h.verdict)}>{getVerdictText(h.verdict)}</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => navigate('/experiments', { state: { inspirationId: inspiration.id, hypothesisText: h.text, hypothesisId: h.id } })}
+                        className="mt-1.5 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded-lg transition-colors"
+                      >
+                        <FlaskConical className="w-3.5 h-3.5" /> 创建实验
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -567,12 +671,25 @@ export function InspirationDetail() {
               待验证假设
             </h4>
             <div className="space-y-2 mb-3">
-              {inspiration.hypotheses.length === 0 ? (
+              {hypothesisList.length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-2">暂无假设</p>
               ) : (
-                inspiration.hypotheses.map((h, idx) => (
-                  <div key={idx} className="flex items-start gap-2 p-2 rounded-lg bg-amber-50">
-                    <p className="text-xs text-slate-600 flex-1">{h}</p>
+                hypothesisList.map((h, idx) => (
+                  <div key={h.id} className="flex items-start gap-2 p-2 rounded-lg bg-amber-50">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs text-slate-600">{h.text}</p>
+                        {h.verdict && (
+                          <span className={getVerdictColor(h.verdict)}>{getVerdictText(h.verdict)}</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => navigate('/experiments', { state: { inspirationId: inspiration.id, hypothesisText: h.text, hypothesisId: h.id } })}
+                        className="mt-1 inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-1.5 py-0.5 rounded transition-colors"
+                      >
+                        <FlaskConical className="w-3 h-3" /> 创建实验
+                      </button>
+                    </div>
                     <button
                       onClick={() => handleRemoveHypothesis(idx)}
                       className="text-slate-400 hover:text-rose-500 shrink-0"

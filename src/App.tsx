@@ -5,6 +5,7 @@ import { CollectionBox } from "@/pages/CollectionBox";
 import { InspirationDetail } from "@/pages/InspirationDetail";
 import { ExperimentPlan } from "@/pages/ExperimentPlan";
 import { Retrospective } from "@/pages/Retrospective";
+import { Dashboard } from "@/pages/Dashboard";
 
 function AppLayout() {
   const location = useLocation();
@@ -20,6 +21,7 @@ function AppLayout() {
           <Route path="/inspiration/:id" element={<InspirationDetail />} />
           <Route path="/experiments" element={<ExperimentPlan />} />
           <Route path="/retrospective/:experimentId" element={<Retrospective />} />
+          <Route path="/dashboard" element={<Dashboard />} />
         </Routes>
       </main>
     </div>

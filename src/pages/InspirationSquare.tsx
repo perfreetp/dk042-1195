@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Plus, SlidersHorizontal, TrendingUp, Clock, Heart, Filter, X } from 'lucide-react';
+import { Search, Plus, SlidersHorizontal, TrendingUp, Clock, Heart, Filter, X, Link as LinkIcon, Image, Database, RotateCcw, Trash2 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { InspirationCard } from '@/components/features/InspirationCard';
 import { cn } from '@/utils/helpers';
@@ -19,9 +19,13 @@ export function InspirationSquare() {
     estimatedCost: 0,
     tags: [] as string[],
     tagInput: '',
+    referenceLinks: [] as string[],
+    materialImages: [] as string[],
+    linkInput: '',
+    imageInput: '',
   });
 
-  const { inspirations, searchQuery, setSearchQuery, selectedTags, toggleTag, sortBy, setSortBy, addInspiration } = useAppStore();
+  const { inspirations, searchQuery, setSearchQuery, selectedTags, toggleTag, sortBy, setSortBy, addInspiration, resetToMockData, clearAllData } = useAppStore();
 
   const filteredInspirations = useMemo(() => {
     let result = [...inspirations];
@@ -67,6 +71,26 @@ export function InspirationSquare() {
     setFormData({ ...formData, tags: formData.tags.filter((t) => t !== tag) });
   };
 
+  const handleAddLink = () => {
+    if (formData.linkInput.trim() && !formData.referenceLinks.includes(formData.linkInput.trim())) {
+      setFormData({ ...formData, referenceLinks: [...formData.referenceLinks, formData.linkInput.trim()], linkInput: '' });
+    }
+  };
+
+  const handleRemoveLink = (link: string) => {
+    setFormData({ ...formData, referenceLinks: formData.referenceLinks.filter((l) => l !== link) });
+  };
+
+  const handleAddImage = () => {
+    if (formData.imageInput.trim() && !formData.materialImages.includes(formData.imageInput.trim())) {
+      setFormData({ ...formData, materialImages: [...formData.materialImages, formData.imageInput.trim()], imageInput: '' });
+    }
+  };
+
+  const handleRemoveImage = (img: string) => {
+    setFormData({ ...formData, materialImages: formData.materialImages.filter((i) => i !== img) });
+  };
+
   const handleSubmit = () => {
     if (!formData.title.trim()) return;
     addInspiration({
@@ -76,9 +100,17 @@ export function InspirationSquare() {
       targetAudience: formData.targetAudience,
       estimatedCost: formData.estimatedCost,
       tags: formData.tags,
+      referenceLinks: formData.referenceLinks,
+      materialImages: formData.materialImages,
     });
-    setFormData({ title: '', description: '', festival: '', targetAudience: '', estimatedCost: 0, tags: [], tagInput: '' });
+    setFormData({ title: '', description: '', festival: '', targetAudience: '', estimatedCost: 0, tags: [], tagInput: '', referenceLinks: [], materialImages: [], linkInput: '', imageInput: '' });
     setShowCreateModal(false);
+  };
+
+  const handleClearAll = () => {
+    if (window.confirm('确定要清空所有数据吗？此操作不可撤销。')) {
+      clearAllData();
+    }
   };
 
   return (
@@ -216,6 +248,25 @@ export function InspirationSquare() {
         )}
       </div>
 
+      <div className="px-8 pb-8">
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Database className="w-4 h-4 text-slate-500" />
+            <span className="text-sm font-semibold text-slate-700">数据管理</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={resetToMockData} className="btn-ghost gap-2 text-sm">
+              <RotateCcw className="w-3.5 h-3.5" />
+              恢复示例数据
+            </button>
+            <button onClick={handleClearAll} className="btn-ghost gap-2 text-sm text-red-600 hover:bg-red-50 hover:border-red-200">
+              <Trash2 className="w-3.5 h-3.5" />
+              清空所有数据
+            </button>
+          </div>
+        </div>
+      </div>
+
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up">
@@ -313,6 +364,77 @@ export function InspirationSquare() {
                           <X className="w-3 h-3" />
                         </button>
                       </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <LinkIcon className="w-3.5 h-3.5 inline mr-1" />
+                  参考链接
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={formData.linkInput}
+                    onChange={(e) => setFormData({ ...formData, linkInput: e.target.value })}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLink())}
+                    placeholder="输入链接后按回车添加"
+                    className="input-field flex-1"
+                  />
+                  <button onClick={handleAddLink} className="btn-ghost">
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+                {formData.referenceLinks.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {formData.referenceLinks.map((link) => (
+                      <span key={link} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-medium max-w-full">
+                        <LinkIcon className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate max-w-[180px]">{link}</span>
+                        <button onClick={() => handleRemoveLink(link)} className="hover:text-blue-900 flex-shrink-0">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                  <Image className="w-3.5 h-3.5 inline mr-1" />
+                  素材图片
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={formData.imageInput}
+                    onChange={(e) => setFormData({ ...formData, imageInput: e.target.value })}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddImage())}
+                    placeholder="输入图片URL后按回车添加"
+                    className="input-field flex-1"
+                  />
+                  <button onClick={handleAddImage} className="btn-ghost">
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+                {formData.materialImages.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {formData.materialImages.map((img) => (
+                      <div key={img} className="relative group">
+                        <img
+                          src={img}
+                          alt="素材"
+                          className="w-16 h-16 object-cover rounded-lg border border-slate-200"
+                          onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="%23cbd5e1"><rect width="64" height="64"/><text x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="%2394a3b8">✕</text></svg>'; }}
+                        />
+                        <button
+                          onClick={() => handleRemoveImage(img)}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}

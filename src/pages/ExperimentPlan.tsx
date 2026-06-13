@@ -1,14 +1,21 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Plus, X, Calendar, User, Eye, Heart, ShoppingCart, DollarSign,
-  Clock, ChevronLeft, ChevronRight, CheckCircle, Play, FileText, Lightbulb
+  Clock, ChevronLeft, ChevronRight, CheckCircle, Play, FileText, Lightbulb, FlaskConical
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { formatDate, formatDateTime, formatCurrency, formatNumber, getStatusText, getStatusColor, cn } from '@/utils/helpers';
 
+interface LocationState {
+  inspirationId?: string;
+  hypothesisText?: string;
+  hypothesisId?: string;
+}
+
 export function ExperimentPlan() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { experiments, inspirations, anchors, addExperiment } = useAppStore();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
@@ -24,7 +31,25 @@ export function ExperimentPlan() {
     engagement: 5,
     conversion: 3,
     gmv: 50000,
+    hypothesisIds: [] as string[],
+    hypothesisText: '',
   });
+
+  useEffect(() => {
+    const state = location.state as LocationState | null;
+    if (state?.inspirationId) {
+      const ins = inspirations.find((i) => i.id === state.inspirationId);
+      setFormData((prev) => ({
+        ...prev,
+        inspirationId: state.inspirationId!,
+        title: ins ? `${ins.title} - 试播实验` : prev.title,
+        hypothesisText: state.hypothesisText || '',
+        hypothesisIds: state.hypothesisId ? [state.hypothesisId] : [],
+      }));
+      setShowCreateModal(true);
+      window.history.replaceState({}, '');
+    }
+  }, [location.state, inspirations]);
 
   const weekDays = useMemo(() => {
     const today = new Date();
@@ -58,6 +83,7 @@ export function ExperimentPlan() {
       scheduledTime,
       anchorId: formData.anchorId,
       anchorName: formData.anchorName,
+      hypothesisIds: formData.hypothesisIds,
       expectedMetrics: {
         views: formData.views,
         engagement: formData.engagement,
@@ -68,6 +94,7 @@ export function ExperimentPlan() {
     setFormData({
       inspirationId: '', title: '', scheduledDate: '', scheduledTime: '20:00',
       anchorId: '', anchorName: '', views: 10000, engagement: 5, conversion: 3, gmv: 50000,
+      hypothesisIds: [], hypothesisText: '',
     });
     setShowCreateModal(false);
   };
@@ -216,6 +243,9 @@ export function ExperimentPlan() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredExperiments.map((exp, index) => {
             const inspiration = inspirations.find((i) => i.id === exp.inspirationId);
+            const matchedHypotheses = inspiration?.hypothesisItems.filter((h) =>
+              exp.hypothesisIds.includes(h.id)
+            ) || [];
             return (
               <div
                 key={exp.id}
@@ -243,6 +273,20 @@ export function ExperimentPlan() {
                       <Lightbulb className="w-4 h-4 text-brand-secondary shrink-0" />
                       <p className="text-sm font-medium text-slate-700 truncate flex-1">关联灵感：{inspiration.title}</p>
                     </button>
+                  )}
+
+                  {matchedHypotheses.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {matchedHypotheses.map((h) => (
+                        <span
+                          key={h.id}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-[11px] font-medium text-purple-700"
+                        >
+                          <FlaskConical className="w-3 h-3" />
+                          {h.text}
+                        </span>
+                      ))}
+                    </div>
                   )}
 
                   <div className="space-y-2 mb-4">
@@ -338,6 +382,8 @@ export function ExperimentPlan() {
                       ...formData,
                       inspirationId: e.target.value,
                       title: ins ? `${ins.title} - 试播实验` : formData.title,
+                      hypothesisIds: [],
+                      hypothesisText: '',
                     });
                   }}
                   className="input-field"
@@ -348,6 +394,18 @@ export function ExperimentPlan() {
                   ))}
                 </select>
               </div>
+
+              {formData.hypothesisText && (
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
+                    <FlaskConical className="w-4 h-4 text-purple-500" />
+                    验证假设
+                  </label>
+                  <div className="p-3 rounded-xl bg-purple-50 border border-purple-200">
+                    <p className="text-sm text-purple-800">{formData.hypothesisText}</p>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">实验标题 *</label>
