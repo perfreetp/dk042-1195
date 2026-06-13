@@ -1,15 +1,67 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Heart, Bookmark, Calendar, Users, DollarSign, Link, Image,
   Star, Tag, ShoppingBag, Lightbulb, MessageCircle, Send, Plus, X,
-  ExternalLink, Clock, CheckCircle, User, TrendingUp, FlaskConical, Link2
+  ExternalLink, Clock, CheckCircle, User, TrendingUp, FlaskConical, Link2,
+  Upload, ChevronLeft, ChevronRight, ZoomIn
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import {
   formatCurrency, formatDateTime, getStatusText, getStatusColor,
-  getRelativeTime, cn, getVerdictText, getVerdictColor
+  getRelativeTime, cn, getVerdictText, getVerdictColor, fileToDataUrl, generateId
 } from '@/utils/helpers';
+import type { MaterialImageItem } from '@/types';
+
+function ImageFallback() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className="w-12 h-12 text-slate-300"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="m21 15-5-5L5 21" />
+    </svg>
+  );
+}
+
+function ThumbnailImage({ src, alt }: { src: string; alt: string }) {
+  const [hasError, setHasError] = useState(false);
+  return hasError ? (
+    <div className="w-full h-full flex items-center justify-center bg-slate-50">
+      <ImageFallback />
+    </div>
+  ) : (
+    <img
+      src={src}
+      alt={alt}
+      className="w-full h-full object-cover"
+      onError={() => setHasError(true)}
+    />
+  );
+}
+
+function LargeImage({ src, alt }: { src: string; alt: string }) {
+  const [hasError, setHasError] = useState(false);
+  return hasError ? (
+    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-3">
+      <ImageFallback />
+      <p className="text-sm">图片加载失败</p>
+    </div>
+  ) : (
+    <img
+      src={src}
+      alt={alt}
+      className="max-w-full max-h-full object-contain"
+      onError={() => setHasError(true)}
+    />
+  );
+}
 
 export function InspirationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -17,7 +69,8 @@ export function InspirationDetail() {
 
   const {
     inspirations, comments, similarCases, products, experiments,
-    toggleLike, toggleFavorite, addComment, addSimilarCase, updateInspiration
+    toggleLike, toggleFavorite, addComment, addSimilarCase, updateInspiration,
+    updateImageCaption
   } = useAppStore();
 
   const [commentText, setCommentText] = useState('');
@@ -30,6 +83,10 @@ export function InspirationDetail() {
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [linkInput, setLinkInput] = useState('');
   const [imageInput, setImageInput] = useState('');
+
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
+  const [editingCaption, setEditingCaption] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const inspiration = useMemo(
     () => inspirations.find((i) => i.id === id),
@@ -55,6 +112,56 @@ export function InspirationDetail() {
     () => products.filter((p) => inspiration?.relatedProducts.includes(p.id)),
     [products, inspiration]
   );
+
+  const materialImages: MaterialImageItem[] = useMemo(() => {
+    if (!inspiration) return [];
+    return inspiration.materialImages.map((item) => {
+      if (typeof item === 'string') {
+        return { id: `img-${generateId()}`, url: item, caption: '' };
+      }
+      return item;
+    });
+  }, [inspiration]);
+
+  const isGalleryOpen = galleryIndex !== null;
+
+  useEffect(() => {
+    if (!isGalleryOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setGalleryIndex(null);
+      } else if (e.key === 'ArrowLeft') {
+        setGalleryIndex((prev) => {
+          if (prev === null) return prev;
+          return prev > 0 ? prev - 1 : materialImages.length - 1;
+        });
+      } else if (e.key === 'ArrowRight') {
+        setGalleryIndex((prev) => {
+          if (prev === null) return prev;
+          return prev < materialImages.length - 1 ? prev + 1 : 0;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isGalleryOpen, materialImages.length]);
+
+  useEffect(() => {
+    if (galleryIndex !== null && materialImages[galleryIndex]) {
+      setEditingCaption(materialImages[galleryIndex].caption);
+    }
+  }, [galleryIndex, materialImages]);
+
+  useEffect(() => {
+    if (isGalleryOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isGalleryOpen]);
 
   if (!inspiration) {
     return (
@@ -151,13 +258,94 @@ export function InspirationDetail() {
 
   const handleAddImage = () => {
     if (!imageInput.trim()) return;
-    updateInspiration(inspiration.id, { materialImages: [...inspiration.materialImages, imageInput.trim()] });
+    const newImages: MaterialImageItem[] = [
+      ...materialImages,
+      { id: `img-${generateId()}`, url: imageInput.trim(), caption: '' }
+    ];
+    updateInspiration(inspiration.id, { materialImages: newImages });
     setImageInput('');
   };
 
-  const handleRemoveImage = (idx: number) => {
-    updateInspiration(inspiration.id, { materialImages: inspiration.materialImages.filter((_, i) => i !== idx) });
+  const handleRemoveImage = (imageId: string) => {
+    const newImages = materialImages.filter((m) => m.id !== imageId);
+    updateInspiration(inspiration.id, { materialImages: newImages });
+    if (galleryIndex !== null) {
+      const idx = materialImages.findIndex((m) => m.id === imageId);
+      if (idx === galleryIndex) {
+        setGalleryIndex(null);
+      } else if (idx < galleryIndex) {
+        setGalleryIndex(galleryIndex - 1);
+      }
+    }
   };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const newItems: MaterialImageItem[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        newItems.push({
+          id: `img-${generateId()}`,
+          url: dataUrl,
+          caption: ''
+        });
+      } catch (err) {
+        console.error('File read error:', err);
+      }
+    }
+    if (newItems.length > 0) {
+      const updatedImages: MaterialImageItem[] = [...materialImages, ...newItems];
+      updateInspiration(inspiration.id, { materialImages: updatedImages });
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const openGallery = (idx: number) => {
+    setGalleryIndex(idx);
+    setEditingCaption(materialImages[idx]?.caption ?? '');
+  };
+
+  const closeGallery = () => {
+    setGalleryIndex(null);
+  };
+
+  const prevImage = () => {
+    if (galleryIndex === null) return;
+    setGalleryIndex(galleryIndex > 0 ? galleryIndex - 1 : materialImages.length - 1);
+  };
+
+  const nextImage = () => {
+    if (galleryIndex === null) return;
+    setGalleryIndex(galleryIndex < materialImages.length - 1 ? galleryIndex + 1 : 0);
+  };
+
+  const handleCaptionBlur = () => {
+    if (galleryIndex === null) return;
+    const currentImage = materialImages[galleryIndex];
+    if (!currentImage) return;
+    if (currentImage.caption !== editingCaption) {
+      updateImageCaption(inspiration.id, currentImage.id, editingCaption);
+    }
+  };
+
+  const handleCaptionKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleCaptionBlur();
+      (e.currentTarget as HTMLInputElement).blur();
+    }
+  };
+
+  const currentGalleryImage = galleryIndex !== null ? materialImages[galleryIndex] : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30">
@@ -274,28 +462,60 @@ export function InspirationDetail() {
               <h3 className="flex items-center gap-2 font-bold text-slate-800">
                 <Image className="w-5 h-5 text-indigo-500" />
                 素材图片
+                {materialImages.length > 0 && (
+                  <span className="text-sm font-normal text-slate-400">({materialImages.length})</span>
+                )}
               </h3>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              {inspiration.materialImages.map((img, idx) => (
-                <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden bg-slate-100">
-                  <img src={img} alt={`素材${idx + 1}`} className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => handleRemoveImage(idx)}
-                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
               <button
-                onClick={() => {}}
-                className="aspect-square rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 hover:text-indigo-500 hover:border-indigo-300 transition-colors"
+                onClick={handleUploadClick}
+                className="btn-ghost text-sm py-1.5 gap-1.5"
               >
-                <Plus className="w-6 h-6 mb-1" />
-                <span className="text-xs">添加图片</span>
+                <Upload className="w-4 h-4" />
+                上传图片
               </button>
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            {materialImages.length > 0 && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                {materialImages.map((img, idx) => (
+                  <div key={img.id} className="group">
+                    <div
+                      className="relative aspect-square rounded-xl overflow-hidden bg-slate-100 cursor-pointer ring-2 ring-transparent hover:ring-indigo-300 transition-all"
+                      onClick={() => openGallery(idx)}
+                    >
+                      <ThumbnailImage src={img.url} alt={img.caption || `素材${idx + 1}`} />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                        <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveImage(img.id);
+                        }}
+                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-500"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {img.caption && (
+                      <p
+                        className="mt-1.5 text-xs text-slate-500 truncate"
+                        title={img.caption}
+                      >
+                        {img.caption}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2">
               <input
                 type="text"
@@ -747,6 +967,77 @@ export function InspirationDetail() {
           )}
         </div>
       </div>
+
+      {isGalleryOpen && currentGalleryImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={closeGallery}
+        >
+          <button
+            onClick={closeGallery}
+            className="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors z-10"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {materialImages.length > 1 && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); prevImage(); }}
+                className="absolute left-5 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors z-10"
+              >
+                <ChevronLeft className="w-8 h-8" />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); nextImage(); }}
+                className="absolute right-5 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors z-10"
+              >
+                <ChevronRight className="w-8 h-8" />
+              </button>
+            </>
+          )}
+
+          <div
+            className="flex flex-col items-center w-full h-full px-20 py-16"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex-1 w-full flex items-center justify-center min-h-0">
+              <LargeImage
+                src={currentGalleryImage.url}
+                alt={currentGalleryImage.caption || '大图'}
+              />
+            </div>
+
+            <div className="w-full max-w-2xl mt-6 space-y-3">
+              <div className="text-center text-white/90 text-sm">
+                {galleryIndex !== null && (
+                  <span className="text-white/60 font-medium">
+                    {galleryIndex + 1} / {materialImages.length}
+                  </span>
+                )}
+              </div>
+
+              {currentGalleryImage.caption && (
+                <p className="text-center text-white/80 text-base font-medium">
+                  {currentGalleryImage.caption}
+                </p>
+              )}
+
+              <div className="flex justify-center">
+                <input
+                  type="text"
+                  value={editingCaption}
+                  onChange={(e) => setEditingCaption(e.target.value)}
+                  onBlur={handleCaptionBlur}
+                  onKeyDown={handleCaptionKeyDown}
+                  placeholder="添加图片说明... (按 Enter 保存)"
+                  className="w-full max-w-md px-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all backdrop-blur-sm"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

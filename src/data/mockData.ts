@@ -1,5 +1,7 @@
 import type { Inspiration, Comment, SimilarCase, Product, Experiment, RetrospectiveData, Anchor } from '@/types';
 
+const makeImg = (url: string, caption = '') => ({ id: `img-${url.slice(-8)}`, url, caption });
+
 export const mockInspirations: Inspiration[] = [
   {
     id: '1',
@@ -10,8 +12,8 @@ export const mockInspirations: Inspiration[] = [
     targetAudience: '25-35岁都市白领女性',
     referenceLinks: ['https://example.com/case1', 'https://example.com/case2'],
     materialImages: [
-      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cosmetic%20gift%20box%20unboxing%20luxury&image_size=square',
-      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=beauty%20products%20collection%20premium&image_size=square',
+      makeImg('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cosmetic%20gift%20box%20unboxing%20luxury&image_size=square', '盲盒实物包装参考'),
+      makeImg('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=beauty%20products%20collection%20premium&image_size=square', '奖品池样品展示'),
     ],
     estimatedCost: 58000,
     status: 'experimenting',
@@ -44,7 +46,7 @@ export const mockInspirations: Inspiration[] = [
     targetAudience: '注重健康品质的家庭用户',
     referenceLinks: ['https://example.com/farm-case'],
     materialImages: [
-      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=fresh%20organic%20vegetables%20basket&image_size=square',
+      makeImg('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=fresh%20organic%20vegetables%20basket&image_size=square', '果园实拍参考图'),
     ],
     estimatedCost: 32000,
     status: 'approved',
@@ -108,8 +110,8 @@ export const mockInspirations: Inspiration[] = [
     targetAudience: '18-25岁二次元爱好者',
     referenceLinks: ['https://example.com/vtuber'],
     materialImages: [
-      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=anime%20figure%20collection%20display&image_size=square',
-      'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=gaming%20merchandise%20colorful&image_size=square',
+      makeImg('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=anime%20figure%20collection%20display&image_size=square', 'IP联动周边参考'),
+      makeImg('https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=gaming%20merchandise%20colorful&image_size=square', '虚拟形象服装方案'),
     ],
     estimatedCost: 85000,
     status: 'draft',

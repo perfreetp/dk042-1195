@@ -129,7 +129,7 @@ export function CollectionBox() {
                       </a>
                     )}
                     <div className="flex items-center gap-2 mt-2">
-                      <button onClick={() => convertDraftToFormal(ins.id)} className="btn-secondary flex items-center gap-1 text-xs py-1.5 px-3">
+                      <button onClick={() => { convertDraftToFormal(ins.id); setActiveTab('formal'); }} className="btn-secondary flex items-center gap-1 text-xs py-1.5 px-3">
                         <ArrowRight className="w-3 h-3" />一键转正式
                       </button>
                     </div>

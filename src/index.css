@@ -107,8 +107,22 @@ body {
   }
 
   .scrollbar-thin {
-    @apply scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent
-           scrollbar-thumb-rounded-full;
+    scrollbar-width: thin;
+    scrollbar-color: #e2e8f0 transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #e2e8f0;
+    border-radius: 9999px;
   }
 }
 

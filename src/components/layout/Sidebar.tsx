@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { Sparkles, Bookmark, Calendar, LayoutDashboard, Lightbulb } from 'lucide-react';
 import { cn } from '@/utils/helpers';
+import { GlobalSearch } from '@/components/layout/GlobalSearch';
 
 const navItems = [
   { to: '/', icon: Sparkles, label: '灵感广场', description: '发现好创意' },
@@ -25,7 +26,11 @@ export function Sidebar() {
           </div>
         </div>
 
-        <nav className="space-y-1">
+      <div className="px-6 mb-6 -mt-4">
+        <GlobalSearch />
+      </div>
+
+      <nav className="space-y-1">
           {navItems.map(({ to, icon: Icon, label, description }) => {
             const isActive = to === '/' ? location.pathname === '/' : location.pathname.startsWith(to);
             return (

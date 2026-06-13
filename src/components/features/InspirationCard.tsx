@@ -24,6 +24,8 @@ export function InspirationCard({ inspiration, delay = 0 }: InspirationCardProps
     toggleFavorite(inspiration.id);
   };
 
+  const coverSrc = inspiration.coverImage || inspiration.materialImages?.[0]?.url;
+
   return (
     <div
       className="card overflow-hidden group cursor-pointer animate-slide-up"
@@ -31,9 +33,9 @@ export function InspirationCard({ inspiration, delay = 0 }: InspirationCardProps
       onClick={() => navigate(`/inspiration/${inspiration.id}`)}
     >
       <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
-        {inspiration.coverImage ? (
+        {coverSrc ? (
           <img
-            src={inspiration.coverImage}
+            src={coverSrc}
             alt={inspiration.title}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           />

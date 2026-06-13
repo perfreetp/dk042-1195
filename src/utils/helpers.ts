@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import type { MaterialImageItem } from '@/types';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -18,7 +19,7 @@ export function formatDateTime(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleString('zh-CN', {
     year: 'numeric',
-    month: 'long',
+    month: 'numeric',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
@@ -60,6 +61,14 @@ export function getRelativeTime(dateStr: string): string {
   if (hours < 24) return `${hours}小时前`;
   if (days < 7) return `${days}天前`;
   return formatDate(dateStr);
+}
+
+export function getDaysRemaining(deletedAtStr: string): number {
+  const deleted = new Date(deletedAtStr);
+  const now = new Date();
+  const msPerDay = 86400000;
+  const diff = 30 - Math.floor((now.getTime() - deleted.getTime()) / msPerDay);
+  return Math.max(0, diff);
 }
 
 export function getStatusText(status: string): string {
@@ -130,4 +139,28 @@ export function getSeverityText(severity: string): string {
     high: '严重',
   };
   return textMap[severity] || severity;
+}
+
+export function generateId(): string {
+  return Math.random().toString(36).substring(2, 11);
+}
+
+export function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export function toMaterialImage(url: string | MaterialImageItem, idx = 0): MaterialImageItem {
+  if (typeof url === 'string') {
+    return { id: `img-${generateId()}`, url, caption: '' };
+  }
+  return url;
+}
+
+export function normalizeMaterialImages(arr: Array<string | MaterialImageItem>): MaterialImageItem[] {
+  return arr.map((item) => (typeof item === 'string' ? toMaterialImage(item) : item));
 }

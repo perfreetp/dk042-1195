@@ -13,6 +13,12 @@ export interface HypothesisItem {
   verdictNote: string;
 }
 
+export interface MaterialImageItem {
+  id: string;
+  url: string;
+  caption: string;
+}
+
 export interface Inspiration {
   id: string;
   title: string;
@@ -21,7 +27,7 @@ export interface Inspiration {
   festival: string;
   targetAudience: string;
   referenceLinks: string[];
-  materialImages: string[];
+  materialImages: MaterialImageItem[];
   estimatedCost: number;
   status: InspirationStatus;
   feasibilityScore: number | null;
@@ -40,6 +46,8 @@ export interface Inspiration {
   creatorAvatar: string;
   createdAt: string;
   updatedAt: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export interface Comment {

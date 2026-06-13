@@ -1,16 +1,21 @@
-import { useState, useMemo } from 'react';
-import { Search, Plus, SlidersHorizontal, TrendingUp, Clock, Heart, Filter, X, Link as LinkIcon, Image, Database, RotateCcw, Trash2 } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
+import { Search, Plus, SlidersHorizontal, TrendingUp, Clock, Heart, Filter, X, Link as LinkIcon, Image, Database, RotateCcw, Trash2, Upload, Undo2, Trash } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { InspirationCard } from '@/components/features/InspirationCard';
-import { cn } from '@/utils/helpers';
+import { cn, generateId, getDaysRemaining, getRelativeTime } from '@/utils/helpers';
+import type { MaterialImageItem } from '@/types';
 
 const festivals = ['618年中大促', '双11', '双12', '端午节', '七夕节', '春节', '无'];
 const audiences = ['25-35岁都市白领女性', '注重健康品质的家庭用户', '0-3岁宝宝新手妈妈', '18-25岁二次元爱好者', '理性消费的品质追求者', '追求性价比的羊毛党'];
 const popularTags = ['互动玩法', '促销策略', '美妆类目', '内容创新', '产地溯源', '生鲜类目', '专家连麦', '虚拟主播', '真实测评', '全品类', '限时玩法'];
 
+type TabKey = 'square' | 'recycle';
+
 export function InspirationSquare() {
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabKey>('square');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -20,15 +25,34 @@ export function InspirationSquare() {
     tags: [] as string[],
     tagInput: '',
     referenceLinks: [] as string[],
-    materialImages: [] as string[],
+    materialImages: [] as MaterialImageItem[],
     linkInput: '',
     imageInput: '',
   });
 
-  const { inspirations, searchQuery, setSearchQuery, selectedTags, toggleTag, sortBy, setSortBy, addInspiration, resetToMockData, clearAllData } = useAppStore();
+  const {
+    inspirations,
+    searchQuery,
+    setSearchQuery,
+    selectedTags,
+    toggleTag,
+    sortBy,
+    setSortBy,
+    addInspiration,
+    resetToMockData,
+    clearAllData,
+    restoreInspiration,
+    permanentlyDeleteInspiration,
+  } = useAppStore();
 
   const filteredInspirations = useMemo(() => {
     let result = [...inspirations];
+
+    if (activeTab === 'recycle') {
+      result = result.filter((ins) => ins.isDeleted);
+    } else {
+      result = result.filter((ins) => !ins.isDeleted);
+    }
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -59,7 +83,7 @@ export function InspirationSquare() {
     }
 
     return result;
-  }, [inspirations, searchQuery, selectedTags, sortBy]);
+  }, [inspirations, searchQuery, selectedTags, sortBy, activeTab]);
 
   const handleAddTag = () => {
     if (formData.tagInput.trim() && !formData.tags.includes(formData.tagInput.trim())) {
@@ -82,13 +106,45 @@ export function InspirationSquare() {
   };
 
   const handleAddImage = () => {
-    if (formData.imageInput.trim() && !formData.materialImages.includes(formData.imageInput.trim())) {
-      setFormData({ ...formData, materialImages: [...formData.materialImages, formData.imageInput.trim()], imageInput: '' });
+    if (formData.imageInput.trim() && !formData.materialImages.find((m) => m.url === formData.imageInput.trim())) {
+      const newItem: MaterialImageItem = {
+        id: `img-${generateId()}`,
+        url: formData.imageInput.trim(),
+        caption: '',
+      };
+      setFormData({ ...formData, materialImages: [...formData.materialImages, newItem], imageInput: '' });
     }
   };
 
-  const handleRemoveImage = (img: string) => {
-    setFormData({ ...formData, materialImages: formData.materialImages.filter((i) => i !== img) });
+  const handleRemoveImage = (imgId: string) => {
+    setFormData({ ...formData, materialImages: formData.materialImages.filter((i) => i.id !== imgId) });
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file) => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataURL = reader.result as string;
+        const newItem: MaterialImageItem = {
+          id: `img-${generateId()}`,
+          url: dataURL,
+          caption: '',
+        };
+        setFormData((prev) => ({
+          ...prev,
+          materialImages: [...prev.materialImages, newItem],
+        }));
+      };
+      reader.readAsDataURL(file);
+    });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleSubmit = () => {
@@ -110,6 +166,16 @@ export function InspirationSquare() {
   const handleClearAll = () => {
     if (window.confirm('确定要清空所有数据吗？此操作不可撤销。')) {
       clearAllData();
+    }
+  };
+
+  const handleRestore = (id: string) => {
+    restoreInspiration(id);
+  };
+
+  const handlePermanentDelete = (id: string) => {
+    if (window.confirm('确定要彻底删除该灵感吗？此操作无法撤销。')) {
+      permanentlyDeleteInspiration(id);
     }
   };
 
@@ -222,12 +288,41 @@ export function InspirationSquare() {
             </div>
           </div>
         )}
+
+        <div className="px-8 pb-4 border-t border-slate-100 pt-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('square')}
+              className={cn(
+                'flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-200',
+                activeTab === 'square'
+                  ? 'bg-brand-primary text-white shadow-glow-indigo'
+                  : 'text-slate-600 hover:bg-slate-100'
+              )}
+            >
+              <TrendingUp className="w-4 h-4" />
+              广场灵感
+            </button>
+            <button
+              onClick={() => setActiveTab('recycle')}
+              className={cn(
+                'flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-200',
+                activeTab === 'recycle'
+                  ? 'bg-brand-primary text-white shadow-glow-indigo'
+                  : 'text-slate-600 hover:bg-slate-100'
+              )}
+            >
+              <Trash2 className="w-4 h-4" />
+              回收站
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="p-8">
         <div className="flex items-center justify-between mb-6">
           <p className="text-sm text-slate-500">
-            共找到 <span className="font-bold text-brand-primary">{filteredInspirations.length}</span> 个灵感
+            共找到 <span className="font-bold text-brand-primary">{filteredInspirations.length}</span> 个{activeTab === 'recycle' ? '已删除的' : ''}灵感
           </p>
         </div>
 
@@ -236,8 +331,112 @@ export function InspirationSquare() {
             <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
               <Search className="w-10 h-10 text-indigo-300" />
             </div>
-            <h3 className="text-lg font-semibold text-slate-700 mb-2">暂无匹配的灵感</h3>
-            <p className="text-sm text-slate-500">试试换个关键词或清除筛选条件</p>
+            <h3 className="text-lg font-semibold text-slate-700 mb-2">
+              {activeTab === 'recycle' ? '回收站是空的' : '暂无匹配的灵感'}
+            </h3>
+            <p className="text-sm text-slate-500">
+              {activeTab === 'recycle' ? '删除的灵感会在这里保留30天' : '试试换个关键词或清除筛选条件'}
+            </p>
+          </div>
+        ) : activeTab === 'recycle' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+            {filteredInspirations.map((ins, index) => {
+              const daysRemaining = ins.deletedAt ? getDaysRemaining(ins.deletedAt) : 0;
+              const deletedAgo = ins.deletedAt ? getRelativeTime(ins.deletedAt) : '';
+              return (
+                <div
+                  key={ins.id}
+                  className="card overflow-hidden group animate-slide-up opacity-90"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
+                    {ins.coverImage ? (
+                      <img
+                        src={ins.coverImage}
+                        alt={ins.title}
+                        className="w-full h-full object-cover grayscale opacity-70"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-slate-400 to-slate-500 flex items-center justify-center">
+                        <span className="text-4xl">💡</span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/20" />
+                    <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {ins.tags.slice(0, 2).map((tag) => (
+                          <span key={tag} className="tag tag-indigo backdrop-blur-sm bg-white/80">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                      <span className="tag tag-red backdrop-blur-sm bg-white/80">
+                        已删除
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-4">
+                    <h3 className="font-bold text-slate-600 text-base mb-2 line-clamp-2">
+                      {ins.title}
+                    </h3>
+                    <p className="text-sm text-slate-400 mb-3 line-clamp-2">{ins.description}</p>
+
+                    <div className="flex items-center gap-2 mb-3 p-2.5 rounded-xl bg-red-50 border border-red-100">
+                      <Trash2 className="w-4 h-4 text-red-500 flex-shrink-0" />
+                      <div className="flex flex-col flex-1 min-w-0">
+                        <span className="text-xs text-red-600 font-medium">
+                          删除于 {deletedAgo}
+                        </span>
+                        <span className="text-xs text-red-500">
+                          剩余 <span className="font-bold">{daysRemaining}</span> 天后自动清除
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-3">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-all duration-500',
+                          daysRemaining > 15 ? 'bg-green-500' : daysRemaining > 5 ? 'bg-amber-500' : 'bg-red-500'
+                        )}
+                        style={{ width: `${(daysRemaining / 30) * 100}%` }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={ins.creatorAvatar}
+                          alt={ins.creatorName}
+                          className="w-7 h-7 rounded-full bg-indigo-100 grayscale"
+                        />
+                        <div>
+                          <p className="text-xs font-medium text-slate-500">{ins.creatorName}</p>
+                          <p className="text-xs text-slate-400">{getRelativeTime(ins.createdAt)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleRestore(ins.id)}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 transition-all duration-200"
+                        >
+                          <Undo2 className="w-3.5 h-3.5" />
+                          还原
+                        </button>
+                        <button
+                          onClick={() => handlePermanentDelete(ins.id)}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-all duration-200"
+                        >
+                          <Trash className="w-3.5 h-3.5" />
+                          彻底删除
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
@@ -257,7 +456,7 @@ export function InspirationSquare() {
           <div className="flex items-center gap-3">
             <button onClick={resetToMockData} className="btn-ghost gap-2 text-sm">
               <RotateCcw className="w-3.5 h-3.5" />
-              恢复示例数据
+              补回示例灵感
             </button>
             <button onClick={handleClearAll} className="btn-ghost gap-2 text-sm text-red-600 hover:bg-red-50 hover:border-red-200">
               <Trash2 className="w-3.5 h-3.5" />
@@ -405,6 +604,14 @@ export function InspirationSquare() {
                   <Image className="w-3.5 h-3.5 inline mr-1" />
                   素材图片
                 </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
                 <div className="flex gap-2 mb-2">
                   <input
                     type="text"
@@ -417,19 +624,26 @@ export function InspirationSquare() {
                   <button onClick={handleAddImage} className="btn-ghost">
                     <Plus className="w-4 h-4" />
                   </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="btn-secondary gap-1.5"
+                  >
+                    <Upload className="w-4 h-4" />
+                    上传本地图片
+                  </button>
                 </div>
                 {formData.materialImages.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {formData.materialImages.map((img) => (
-                      <div key={img} className="relative group">
+                      <div key={img.id} className="relative group">
                         <img
-                          src={img}
+                          src={img.url}
                           alt="素材"
                           className="w-16 h-16 object-cover rounded-lg border border-slate-200"
                           onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="%23cbd5e1"><rect width="64" height="64"/><text x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="%2394a3b8">✕</text></svg>'; }}
                         />
                         <button
-                          onClick={() => handleRemoveImage(img)}
+                          onClick={() => handleRemoveImage(img.id)}
                           className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X className="w-3 h-3" />

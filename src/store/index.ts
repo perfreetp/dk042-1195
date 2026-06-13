@@ -1,16 +1,32 @@
 import { create } from 'zustand';
-import type { Inspiration, Comment, SimilarCase, Product, Experiment, RetrospectiveData, Anchor, HypothesisItem, HypothesisVerdict } from '@/types';
+import type { Inspiration, Comment, SimilarCase, Product, Experiment, RetrospectiveData, Anchor, HypothesisItem, HypothesisVerdict, MaterialImageItem } from '@/types';
 import { mockInspirations, mockComments, mockSimilarCases, mockProducts, mockExperiments, mockRetrospectives, mockAnchors } from '@/data/mockData';
+import { generateId, normalizeMaterialImages } from '@/utils/helpers';
 
 const STORAGE_KEY = 'inspiration-hub-data';
 
-const generateId = () => Math.random().toString(36).substring(2, 11);
+function toMaterialImages(arr: any): MaterialImageItem[] {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((item) => {
+    if (typeof item === 'string') {
+      return { id: `img-${generateId()}`, url: item, caption: '' };
+    }
+    return { id: item.id || `img-${generateId()}`, url: item.url || '', caption: item.caption || '' };
+  });
+}
 
 function loadFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (parsed.inspirations) {
+        parsed.inspirations = parsed.inspirations.map((ins: any) => ({
+          ...ins,
+          materialImages: toMaterialImages(ins.materialImages),
+        }));
+      }
+      return parsed;
     }
   } catch {}
   return null;
@@ -28,6 +44,8 @@ function saveToStorage(state: Partial<AppState>) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch {}
 }
+
+const MOCK_IDS = new Set(mockInspirations.map((i) => i.id));
 
 interface AppState {
   inspirations: Inspiration[];
@@ -49,10 +67,14 @@ interface AppState {
   toggleLike: (id: string) => void;
   toggleFavorite: (id: string) => void;
 
-  addInspiration: (data: Partial<Inspiration>) => void;
-  updateInspiration: (id: string, data: Partial<Inspiration>) => void;
+  addInspiration: (data: Partial<Inspiration> & { materialImages?: Array<string | MaterialImageItem> }) => void;
+  updateInspiration: (id: string, data: Partial<Inspiration> & { materialImages?: Array<string | MaterialImageItem> }) => void;
   deleteInspiration: (id: string) => void;
+  restoreInspiration: (id: string) => void;
+  permanentlyDeleteInspiration: (id: string) => void;
   convertDraftToFormal: (id: string) => void;
+
+  updateImageCaption: (inspirationId: string, imageId: string, caption: string) => void;
 
   addComment: (inspirationId: string, content: string) => void;
   addSimilarCase: (inspirationId: string, data: Omit<SimilarCase, 'id' | 'inspirationId'>) => void;
@@ -142,7 +164,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         festival: data.festival || '',
         targetAudience: data.targetAudience || '',
         referenceLinks: data.referenceLinks || [],
-        materialImages: data.materialImages || [],
+        materialImages: toMaterialImages(data.materialImages || []),
         estimatedCost: data.estimatedCost || 0,
         status: data.status || (data.isDraft ? 'incomplete' : 'draft'),
         feasibilityScore: data.feasibilityScore || null,
@@ -169,14 +191,34 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateInspiration: (id, data) =>
     set((state) => {
-      const inspirations = state.inspirations.map((ins) =>
-        ins.id === id ? { ...ins, ...data, updatedAt: new Date().toISOString() } : ins
-      );
+      const patch: any = { ...data, updatedAt: new Date().toISOString() };
+      if (data.materialImages) {
+        patch.materialImages = toMaterialImages(data.materialImages);
+      }
+      const inspirations = state.inspirations.map((ins) => (ins.id === id ? { ...ins, ...patch } : ins));
       saveToStorage({ ...state, inspirations });
       return { inspirations };
     }),
 
   deleteInspiration: (id) =>
+    set((state) => {
+      const inspirations = state.inspirations.map((ins) =>
+        ins.id === id ? { ...ins, isDeleted: true, deletedAt: new Date().toISOString() } : ins
+      );
+      saveToStorage({ ...state, inspirations });
+      return { inspirations };
+    }),
+
+  restoreInspiration: (id) =>
+    set((state) => {
+      const inspirations = state.inspirations.map((ins) =>
+        ins.id === id ? { ...ins, isDeleted: false, deletedAt: undefined } : ins
+      );
+      saveToStorage({ ...state, inspirations });
+      return { inspirations };
+    }),
+
+  permanentlyDeleteInspiration: (id) =>
     set((state) => {
       const inspirations = state.inspirations.filter((ins) => ins.id !== id);
       saveToStorage({ ...state, inspirations });
@@ -187,6 +229,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => {
       const inspirations = state.inspirations.map((ins) =>
         ins.id === id ? { ...ins, isDraft: false, status: 'draft' as const, updatedAt: new Date().toISOString() } : ins
+      );
+      saveToStorage({ ...state, inspirations });
+      return { inspirations };
+    }),
+
+  updateImageCaption: (inspirationId, imageId, caption) =>
+    set((state) => {
+      const inspirations = state.inspirations.map((ins) =>
+        ins.id === inspirationId
+          ? {
+              ...ins,
+              materialImages: ins.materialImages.map((m) => (m.id === imageId ? { ...m, caption } : m)),
+              updatedAt: new Date().toISOString(),
+            }
+          : ins
       );
       saveToStorage({ ...state, inspirations });
       return { inspirations };
@@ -233,7 +290,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateExperiment: (id, data) =>
     set((state) => {
-      const experiments = state.experiments.map((exp) => exp.id === id ? { ...exp, ...data } : exp);
+      const experiments = state.experiments.map((exp) => (exp.id === id ? { ...exp, ...data } : exp));
       saveToStorage({ ...state, experiments });
       return { experiments };
     }),
@@ -258,7 +315,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   updateRetrospective: (id, data) =>
     set((state) => {
-      const retrospectives = state.retrospectives.map((retro) => retro.id === id ? { ...retro, ...data } : retro);
+      const retrospectives = state.retrospectives.map((retro) => (retro.id === id ? { ...retro, ...data } : retro));
       saveToStorage({ ...state, retrospectives });
       return { retrospectives };
     }),
@@ -267,17 +324,51 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => {
       const retrospectives = state.retrospectives.map((retro) =>
         retro.id === retrospectiveId
-          ? { ...retro, actionItems: retro.actionItems.map((ai) => ai.id === actionItemId ? { ...ai, completed: !ai.completed } : ai) }
+          ? { ...retro, actionItems: retro.actionItems.map((ai) => (ai.id === actionItemId ? { ...ai, completed: !ai.completed } : ai)) }
           : retro
       );
       saveToStorage({ ...state, retrospectives });
       return { retrospectives };
     }),
 
-  resetToMockData: () => {
-    localStorage.removeItem(STORAGE_KEY);
-    set({ ...defaultState });
-  },
+  resetToMockData: () =>
+    set((state) => {
+      const currentUserInspirations = state.inspirations.filter((i) => !MOCK_IDS.has(i.id));
+      const restoredMockInspirations = mockInspirations.map((mi) => {
+        const existing = state.inspirations.find((i) => i.id === mi.id);
+        if (existing) {
+          return {
+            ...mi,
+            isLiked: existing.isLiked,
+            likes: existing.likes,
+            isFavorited: existing.isFavorited,
+            favorites: existing.favorites,
+            ...(existing.isDeleted ? {} : { isDeleted: undefined, deletedAt: undefined }),
+          };
+        }
+        return mi;
+      });
+      const inspirations = [...restoredMockInspirations, ...currentUserInspirations];
+      const comments = [
+        ...mockComments,
+        ...state.comments.filter((c) => !mockComments.find((mc) => mc.id === c.id)),
+      ];
+      const similarCases = [
+        ...mockSimilarCases,
+        ...state.similarCases.filter((s) => !mockSimilarCases.find((ms) => ms.id === s.id)),
+      ];
+      const experiments = [
+        ...mockExperiments,
+        ...state.experiments.filter((e) => !mockExperiments.find((me) => me.id === e.id)),
+      ];
+      const retrospectives = [
+        ...mockRetrospectives,
+        ...state.retrospectives.filter((r) => !mockRetrospectives.find((mr) => mr.id === r.id)),
+      ];
+      const newState = { ...state, inspirations, comments, similarCases, experiments, retrospectives };
+      saveToStorage(newState);
+      return newState;
+    }),
 
   clearAllData: () => {
     const emptyState = {
