@@ -21,7 +21,7 @@ export function CollectionBox() {
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
 
   const formalInspirations = useMemo(
-    () => inspirations.filter((ins) => ins.isFavorited && !ins.isDraft),
+    () => inspirations.filter((ins) => !ins.isDraft && !ins.isDeleted),
     [inspirations]
   );
   const draftInspirations = useMemo(
@@ -48,7 +48,7 @@ export function CollectionBox() {
   };
 
   const tabs: { key: TabKey; label: string; icon: typeof Sparkles; count: number }[] = [
-    { key: 'formal', label: '正式灵感', icon: Sparkles, count: formalInspirations.length },
+    { key: 'formal', label: '全部灵感', icon: Sparkles, count: formalInspirations.length },
     { key: 'draft', label: '采集草稿', icon: FileText, count: draftInspirations.length },
   ];
 
@@ -65,8 +65,8 @@ export function CollectionBox() {
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-orange-100">
-                <Bookmark className="w-4 h-4 text-brand-secondary" />
-                <span className="text-sm font-semibold text-brand-secondary">{formalInspirations.length} 收藏</span>
+                <Sparkles className="w-4 h-4 text-brand-secondary" />
+                <span className="text-sm font-semibold text-brand-secondary">{formalInspirations.length} 全部灵感</span>
               </div>
               <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200">
                 <FileText className="w-4 h-4 text-slate-500" />
@@ -108,10 +108,10 @@ export function CollectionBox() {
               {activeTab === 'formal' ? <Bookmark className="w-12 h-12 text-orange-300" /> : <FileText className="w-12 h-12 text-orange-300" />}
             </div>
             <h3 className="text-lg font-semibold text-slate-700 mb-2">
-              {activeTab === 'formal' ? '暂无正式灵感' : '暂无采集草稿'}
+              {activeTab === 'formal' ? '暂无灵感' : '暂无采集草稿'}
             </h3>
             <p className="text-sm text-slate-500 mb-4">
-              {activeTab === 'formal' ? '去灵感广场逛逛，收藏喜欢的灵感吧~' : '点击快速采集按钮，从外部链接捕获灵感碎片'}
+              {activeTab === 'formal' ? '去灵感广场逛逛，发现更多灵感吧~' : '点击快速采集按钮，从外部链接捕获灵感碎片'}
             </p>
           </div>
         ) : (

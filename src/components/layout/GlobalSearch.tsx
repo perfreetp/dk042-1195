@@ -5,6 +5,12 @@ import { useAppStore } from '@/store';
 import { getStatusText, getStatusColor, cn } from '@/utils/helpers';
 import type { Inspiration, Experiment, RetrospectiveData } from '@/types';
 
+interface GlobalSearchProps {
+  initialQuery?: string;
+  onSelect?: () => void;
+  compact?: boolean;
+}
+
 interface InspirationResult {
   type: 'inspiration';
   data: Inspiration;
@@ -41,11 +47,11 @@ function findSnippet(text: string, query: string, maxLen = 80): string {
   return (start > 0 ? '...' : '') + text.slice(start, end) + (end < text.length ? '...' : '');
 }
 
-export function GlobalSearch() {
+export function GlobalSearch({ initialQuery = '', onSelect, compact = false }: GlobalSearchProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [query, setQuery] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState(initialQuery);
+  const [isOpen, setIsOpen] = useState(initialQuery.trim().length > 0);
 
   const { inspirations, experiments, retrospectives } = useAppStore();
 
@@ -156,23 +162,32 @@ export function GlobalSearch() {
   const handleSelect = (r: SearchResult) => {
     setIsOpen(false);
     setQuery('');
+    onSelect?.();
+    const navigateState = { searchQuery: query };
     if (r.type === 'inspiration') {
-      navigate(`/inspiration/${r.data.id}`);
+      navigate(`/inspiration/${r.data.id}`, { state: navigateState });
     } else if (r.type === 'experiment') {
       if (r.data.status === 'completed') {
-        navigate(`/retrospective/${r.data.id}`);
+        navigate(`/retrospective/${r.data.id}`, { state: navigateState });
       } else {
-        navigate('/experiments');
+        navigate('/experiments', { state: navigateState });
       }
     } else {
-      navigate(`/retrospective/${r.data.experimentId}`);
+      navigate(`/retrospective/${r.data.experimentId}`, { state: navigateState });
     }
   };
+
+  const inputPaddingY = compact ? 'py-1.5' : 'py-2.5';
+  const inputPaddingX = compact ? 'pl-9 pr-9' : 'pl-10 pr-10';
+  const iconLeft = compact ? 'left-2.5' : 'left-3.5';
+  const iconSize = compact ? 'w-3.5 h-3.5' : 'w-4 h-4';
+  const clearBtnRight = compact ? 'right-2' : 'right-3';
+  const clearBtnSize = compact ? 'w-5 h-5' : 'w-6 h-6';
 
   return (
     <div ref={containerRef} className="relative w-full max-w-md">
       <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+        <Search className={cn('absolute top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none', iconLeft, iconSize)} />
         <input
           type="text"
           value={query}
@@ -182,7 +197,7 @@ export function GlobalSearch() {
           }}
           onFocus={() => setIsOpen(true)}
           placeholder="搜索灵感、实验、复盘..."
-          className="input-field pl-10 pr-10 py-2.5 text-sm"
+          className={cn('input-field text-sm', inputPaddingX, inputPaddingY)}
         />
         {query && (
           <button
@@ -190,7 +205,7 @@ export function GlobalSearch() {
               setQuery('');
               setIsOpen(false);
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors"
+            className={cn('absolute top-1/2 -translate-y-1/2 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors', clearBtnRight, clearBtnSize)}
           >
             <X className="w-3.5 h-3.5" />
           </button>

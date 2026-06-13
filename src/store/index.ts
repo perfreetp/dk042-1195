@@ -1,5 +1,19 @@
 import { create } from 'zustand';
-import type { Inspiration, Comment, SimilarCase, Product, Experiment, RetrospectiveData, Anchor, HypothesisItem, HypothesisVerdict, MaterialImageItem } from '@/types';
+import type {
+  Inspiration,
+  Comment,
+  SimilarCase,
+  Product,
+  Experiment,
+  RetrospectiveData,
+  Anchor,
+  HypothesisItem,
+  HypothesisVerdict,
+  MaterialImageItem,
+  Annotation,
+  AnnotationStatus,
+  AnnotationTargetType,
+} from '@/types';
 import { mockInspirations, mockComments, mockSimilarCases, mockProducts, mockExperiments, mockRetrospectives, mockAnchors } from '@/data/mockData';
 import { generateId, normalizeMaterialImages } from '@/utils/helpers';
 
@@ -40,12 +54,22 @@ function saveToStorage(state: Partial<AppState>) {
       similarCases: state.similarCases,
       experiments: state.experiments,
       retrospectives: state.retrospectives,
+      annotations: state.annotations || [],
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch {}
 }
 
 const MOCK_IDS = new Set(mockInspirations.map((i) => i.id));
+
+function cleanExpiredDeleted(inspirations: Inspiration[]): Inspiration[] {
+  const now = new Date().getTime();
+  const ms30 = 30 * 24 * 60 * 60 * 1000;
+  return inspirations.filter((ins) => {
+    if (!ins.isDeleted || !ins.deletedAt) return true;
+    return now - new Date(ins.deletedAt).getTime() < ms30;
+  });
+}
 
 interface AppState {
   inspirations: Inspiration[];
@@ -55,6 +79,7 @@ interface AppState {
   experiments: Experiment[];
   retrospectives: RetrospectiveData[];
   anchors: Anchor[];
+  annotations: Annotation[];
 
   searchQuery: string;
   selectedTags: string[];
@@ -74,7 +99,18 @@ interface AppState {
   permanentlyDeleteInspiration: (id: string) => void;
   convertDraftToFormal: (id: string) => void;
 
+  batchAddTags: (ids: string[], tags: string[]) => void;
+  batchSetStatus: (ids: string[], status: Inspiration['status']) => void;
+  batchDelete: (ids: string[]) => void;
+  mergeBundle: (ids: string[], title: string) => void;
+
   updateImageCaption: (inspirationId: string, imageId: string, caption: string) => void;
+
+  addAnnotation: (data: Omit<Annotation, 'id' | 'authorId' | 'authorName' | 'authorAvatar' | 'createdAt' | 'status'>) => void;
+  updateAnnotation: (id: string, data: Partial<Annotation>) => void;
+  resolveAnnotation: (id: string) => void;
+  reopenAnnotation: (id: string) => void;
+  deleteAnnotation: (id: string) => void;
 
   addComment: (inspirationId: string, content: string) => void;
   addSimilarCase: (inspirationId: string, data: Omit<SimilarCase, 'id' | 'inspirationId'>) => void;
@@ -94,23 +130,25 @@ interface AppState {
 const saved = loadFromStorage();
 
 const defaultState = {
-  inspirations: mockInspirations,
+  inspirations: cleanExpiredDeleted(mockInspirations),
   comments: mockComments,
   similarCases: mockSimilarCases,
   products: mockProducts,
   experiments: mockExperiments,
   retrospectives: mockRetrospectives,
   anchors: mockAnchors,
+  annotations: [],
 };
 
 const initialState = saved
   ? {
       ...defaultState,
-      inspirations: saved.inspirations ?? mockInspirations,
+      inspirations: cleanExpiredDeleted(saved.inspirations ?? mockInspirations),
       comments: saved.comments ?? mockComments,
       similarCases: saved.similarCases ?? mockSimilarCases,
       experiments: saved.experiments ?? mockExperiments,
       retrospectives: saved.retrospectives ?? mockRetrospectives,
+      annotations: saved.annotations ?? [],
     }
   : defaultState;
 
@@ -221,15 +259,103 @@ export const useAppStore = create<AppState>((set, get) => ({
   permanentlyDeleteInspiration: (id) =>
     set((state) => {
       const inspirations = state.inspirations.filter((ins) => ins.id !== id);
-      saveToStorage({ ...state, inspirations });
-      return { inspirations };
+      const annotations = state.annotations.filter((a) => a.inspirationId !== id);
+      const comments = state.comments.filter((c) => c.inspirationId !== id);
+      const similarCases = state.similarCases.filter((s) => s.inspirationId !== id);
+      const newState = { ...state, inspirations, annotations, comments, similarCases };
+      saveToStorage(newState);
+      return newState;
     }),
 
   convertDraftToFormal: (id) =>
     set((state) => {
       const inspirations = state.inspirations.map((ins) =>
-        ins.id === id ? { ...ins, isDraft: false, status: 'draft' as const, updatedAt: new Date().toISOString() } : ins
+        ins.id === id
+          ? {
+              ...ins,
+              isDraft: false,
+              status: 'draft' as const,
+              updatedAt: new Date().toISOString(),
+              isFavorited: true,
+              favorites: ins.favorites + (ins.isFavorited ? 0 : 1),
+            }
+          : ins
       );
+      saveToStorage({ ...state, inspirations });
+      return { inspirations };
+    }),
+
+  batchAddTags: (ids, tags) =>
+    set((state) => {
+      const inspirations = state.inspirations.map((ins) =>
+        ids.includes(ins.id)
+          ? { ...ins, tags: [...new Set([...ins.tags, ...tags])], updatedAt: new Date().toISOString() }
+          : ins
+      );
+      saveToStorage({ ...state, inspirations });
+      return { inspirations };
+    }),
+
+  batchSetStatus: (ids, status) =>
+    set((state) => {
+      const inspirations = state.inspirations.map((ins) =>
+        ids.includes(ins.id) ? { ...ins, status, updatedAt: new Date().toISOString() } : ins
+      );
+      saveToStorage({ ...state, inspirations });
+      return { inspirations };
+    }),
+
+  batchDelete: (ids) =>
+    set((state) => {
+      const now = new Date().toISOString();
+      const inspirations = state.inspirations.map((ins) =>
+        ids.includes(ins.id) ? { ...ins, isDeleted: true, deletedAt: now } : ins
+      );
+      saveToStorage({ ...state, inspirations });
+      return { inspirations };
+    }),
+
+  mergeBundle: (ids, title) =>
+    set((state) => {
+      const children = state.inspirations.filter((ins) => ids.includes(ins.id));
+      if (children.length === 0) return state;
+      const allTags = [...new Set(children.flatMap((c) => c.tags))];
+      const allProducts = [...new Set(children.flatMap((c) => c.relatedProducts))];
+      const allLinks = [...new Set(children.flatMap((c) => c.referenceLinks))];
+      const allImages = children.flatMap((c) => c.materialImages);
+      const description = children.map((c) => `【${c.title}】\n${c.description}`).join('\n\n');
+      const totalCost = children.reduce((s, c) => s + c.estimatedCost, 0);
+      const bundle: Inspiration = {
+        id: generateId(),
+        title,
+        description,
+        coverImage: children[0].coverImage || children[0].materialImages[0]?.url || '',
+        festival: children[0].festival,
+        targetAudience: children[0].targetAudience,
+        referenceLinks: allLinks,
+        materialImages: allImages,
+        estimatedCost: totalCost,
+        status: 'bundle' as const,
+        feasibilityScore: null,
+        tags: [...allTags, '灵感包'],
+        relatedProducts: allProducts,
+        hypotheses: [],
+        hypothesisItems: [],
+        sourceUrl: '',
+        isDraft: false,
+        isBundle: true,
+        bundleChildIds: ids,
+        likes: 0,
+        isLiked: false,
+        favorites: 0,
+        isFavorited: false,
+        creatorId: 'u1',
+        creatorName: '当前用户',
+        creatorAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=current',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const inspirations = [bundle, ...state.inspirations];
       saveToStorage({ ...state, inspirations });
       return { inspirations };
     }),
@@ -247,6 +373,58 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       saveToStorage({ ...state, inspirations });
       return { inspirations };
+    }),
+
+  addAnnotation: (data) =>
+    set((state) => {
+      const annotation: Annotation = {
+        id: generateId(),
+        inspirationId: data.inspirationId,
+        targetType: data.targetType,
+        targetId: data.targetId,
+        content: data.content,
+        authorId: 'u1',
+        authorName: '当前用户',
+        authorAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=current',
+        assigneeName: data.assigneeName || '',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+      const annotations = [annotation, ...state.annotations];
+      saveToStorage({ ...state, annotations });
+      return { annotations };
+    }),
+
+  updateAnnotation: (id, data) =>
+    set((state) => {
+      const annotations = state.annotations.map((a) => (a.id === id ? { ...a, ...data } : a));
+      saveToStorage({ ...state, annotations });
+      return { annotations };
+    }),
+
+  resolveAnnotation: (id) =>
+    set((state) => {
+      const annotations = state.annotations.map((a) =>
+        a.id === id ? { ...a, status: 'resolved' as const, resolvedAt: new Date().toISOString() } : a
+      );
+      saveToStorage({ ...state, annotations });
+      return { annotations };
+    }),
+
+  reopenAnnotation: (id) =>
+    set((state) => {
+      const annotations = state.annotations.map((a) =>
+        a.id === id ? { ...a, status: 'pending' as const, resolvedAt: undefined } : a
+      );
+      saveToStorage({ ...state, annotations });
+      return { annotations };
+    }),
+
+  deleteAnnotation: (id) =>
+    set((state) => {
+      const annotations = state.annotations.filter((a) => a.id !== id);
+      saveToStorage({ ...state, annotations });
+      return { annotations };
     }),
 
   addComment: (inspirationId, content) =>
@@ -377,6 +555,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       similarCases: [],
       experiments: [],
       retrospectives: [],
+      annotations: [],
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(emptyState));
     set({ ...emptyState });

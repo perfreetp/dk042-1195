@@ -1,10 +1,14 @@
-export type InspirationStatus = 'draft' | 'reviewing' | 'approved' | 'experimenting' | 'completed' | 'archived' | 'incomplete';
+export type InspirationStatus = 'draft' | 'reviewing' | 'approved' | 'experimenting' | 'completed' | 'archived' | 'incomplete' | 'bundle';
 
 export type ExperimentStatus = 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
 
 export type Severity = 'low' | 'medium' | 'high';
 
 export type HypothesisVerdict = 'confirmed' | 'refuted' | 'inconclusive' | 'pending';
+
+export type AnnotationStatus = 'pending' | 'resolved';
+
+export type AnnotationTargetType = 'image' | 'link';
 
 export interface HypothesisItem {
   id: string;
@@ -17,6 +21,21 @@ export interface MaterialImageItem {
   id: string;
   url: string;
   caption: string;
+}
+
+export interface Annotation {
+  id: string;
+  inspirationId: string;
+  targetType: AnnotationTargetType;
+  targetId: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar: string;
+  assigneeName: string;
+  status: AnnotationStatus;
+  createdAt: string;
+  resolvedAt?: string;
 }
 
 export interface Inspiration {
@@ -37,6 +56,8 @@ export interface Inspiration {
   hypothesisItems: HypothesisItem[];
   sourceUrl: string;
   isDraft: boolean;
+  isBundle?: boolean;
+  bundleChildIds?: string[];
   likes: number;
   isLiked: boolean;
   favorites: number;

@@ -83,6 +83,7 @@ export function getStatusText(status: string): string {
     scheduled: '待执行',
     ongoing: '进行中',
     cancelled: '已取消',
+    bundle: '灵感包',
   };
   return statusMap[status] || status;
 }
@@ -99,6 +100,7 @@ export function getStatusColor(status: string): string {
     scheduled: 'tag-indigo',
     ongoing: 'tag-orange',
     cancelled: 'tag-red',
+    bundle: 'tag-indigo',
   };
   return colorMap[status] || 'tag-indigo';
 }

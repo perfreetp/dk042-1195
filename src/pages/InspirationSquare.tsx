@@ -1,13 +1,20 @@
 import { useState, useMemo, useRef } from 'react';
-import { Search, Plus, SlidersHorizontal, TrendingUp, Clock, Heart, Filter, X, Link as LinkIcon, Image, Database, RotateCcw, Trash2, Upload, Undo2, Trash } from 'lucide-react';
+import { Search, Plus, SlidersHorizontal, TrendingUp, Clock, Heart, Filter, X, Link as LinkIcon, Image, Database, RotateCcw, Trash2, Upload, Undo2, Trash, CheckSquare, Square, ListChecks, Layers, Tag } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { InspirationCard } from '@/components/features/InspirationCard';
-import { cn, generateId, getDaysRemaining, getRelativeTime } from '@/utils/helpers';
-import type { MaterialImageItem } from '@/types';
+import { cn, generateId, getDaysRemaining, getRelativeTime, formatCurrency, getStatusText, getStatusColor } from '@/utils/helpers';
+import type { MaterialImageItem, Inspiration } from '@/types';
 
 const festivals = ['618年中大促', '双11', '双12', '端午节', '七夕节', '春节', '无'];
 const audiences = ['25-35岁都市白领女性', '注重健康品质的家庭用户', '0-3岁宝宝新手妈妈', '18-25岁二次元爱好者', '理性消费的品质追求者', '追求性价比的羊毛党'];
 const popularTags = ['互动玩法', '促销策略', '美妆类目', '内容创新', '产地溯源', '生鲜类目', '专家连麦', '虚拟主播', '真实测评', '全品类', '限时玩法'];
+const statusOptions = [
+  { value: 'draft', label: '草稿' },
+  { value: 'reviewing', label: '评审中' },
+  { value: 'approved', label: '已通过' },
+  { value: 'experimenting', label: '实验中' },
+  { value: 'completed', label: '已完成' },
+];
 
 type TabKey = 'square' | 'recycle';
 
@@ -15,6 +22,12 @@ export function InspirationSquare() {
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('square');
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchTagInput, setBatchTagInput] = useState('');
+  const [batchStatus, setBatchStatus] = useState('');
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [bundleTitle, setBundleTitle] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     title: '',
@@ -43,6 +56,10 @@ export function InspirationSquare() {
     clearAllData,
     restoreInspiration,
     permanentlyDeleteInspiration,
+    batchAddTags,
+    batchSetStatus,
+    batchDelete,
+    mergeBundle,
   } = useAppStore();
 
   const filteredInspirations = useMemo(() => {
@@ -84,6 +101,65 @@ export function InspirationSquare() {
 
     return result;
   }, [inspirations, searchQuery, selectedTags, sortBy, activeTab]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const selectAll = () => {
+    if (selectedIds.length === filteredInspirations.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredInspirations.map((ins) => ins.id));
+    }
+  };
+
+  const exitBatchMode = () => {
+    setBatchMode(false);
+    setSelectedIds([]);
+    setBatchTagInput('');
+    setBatchStatus('');
+  };
+
+  const handleBatchAddTags = () => {
+    if (!batchTagInput.trim() || selectedIds.length === 0) return;
+    const tags = batchTagInput.split(',').map((t) => t.trim()).filter((t) => t);
+    if (tags.length > 0) {
+      batchAddTags(selectedIds, tags);
+      setBatchTagInput('');
+    }
+  };
+
+  const handleBatchSetStatus = () => {
+    if (!batchStatus || selectedIds.length === 0) return;
+    batchSetStatus(selectedIds, batchStatus as Inspiration['status']);
+    setBatchStatus('');
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedIds.length === 0) return;
+    if (window.confirm(`确定要将选中的 ${selectedIds.length} 个灵感移到回收站吗？`)) {
+      batchDelete(selectedIds);
+      exitBatchMode();
+    }
+  };
+
+  const handleMergeBundle = () => {
+    if (selectedIds.length < 2) {
+      window.alert('请至少选择2个灵感进行合并');
+      return;
+    }
+    if (!bundleTitle.trim()) {
+      window.alert('请输入灵感包标题');
+      return;
+    }
+    mergeBundle(selectedIds, bundleTitle.trim());
+    setShowMergeModal(false);
+    setBundleTitle('');
+    exitBatchMode();
+  };
 
   const handleAddTag = () => {
     if (formData.tagInput.trim() && !formData.tags.includes(formData.tagInput.trim())) {
@@ -179,6 +255,91 @@ export function InspirationSquare() {
     }
   };
 
+  const renderBatchCard = (ins: Inspiration, index: number) => {
+    const isSelected = selectedIds.includes(ins.id);
+    const coverSrc = ins.coverImage || ins.materialImages?.[0]?.url;
+
+    return (
+      <div
+        key={ins.id}
+        className={cn(
+          'card overflow-hidden group cursor-pointer animate-slide-up relative',
+          isSelected && 'ring-2 ring-brand-primary ring-offset-2'
+        )}
+        style={{ animationDelay: `${index * 50}ms` }}
+        onClick={() => toggleSelect(ins.id)}
+      >
+        <div className="absolute top-3 left-3 z-10">
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleSelect(ins.id); }}
+            className="w-6 h-6 rounded-md bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-sm hover:bg-white transition-colors"
+          >
+            {isSelected ? (
+              <CheckSquare className="w-5 h-5 text-brand-primary" />
+            ) : (
+              <Square className="w-5 h-5 text-slate-400" />
+            )}
+          </button>
+        </div>
+
+        <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
+          {coverSrc ? (
+            <img
+              src={coverSrc}
+              alt={ins.title}
+              className={cn(
+                'w-full h-full object-cover transition-transform duration-500 group-hover:scale-110',
+                isSelected && 'opacity-80'
+              )}
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
+              <span className="text-4xl">💡</span>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
+            <div className="flex flex-wrap gap-1.5 ml-9">
+              {ins.tags.slice(0, 2).map((tag) => (
+                <span key={tag} className="tag-indigo backdrop-blur-sm bg-white/80">
+                  {tag}
+                </span>
+              ))}
+            </div>
+            <span className={`${getStatusColor(ins.status)} backdrop-blur-sm bg-white/80`}>
+              {getStatusText(ins.status)}
+            </span>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <h3 className="font-bold text-slate-800 text-base mb-2 line-clamp-2 group-hover:text-brand-primary transition-colors">
+            {ins.title}
+          </h3>
+          <p className="text-sm text-slate-500 mb-3 line-clamp-2">{ins.description}</p>
+
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-2">
+              <img
+                src={ins.creatorAvatar}
+                alt={ins.creatorName}
+                className="w-7 h-7 rounded-full bg-indigo-100"
+              />
+              <div>
+                <p className="text-xs font-medium text-slate-700">{ins.creatorName}</p>
+                <p className="text-xs text-slate-400">{getRelativeTime(ins.createdAt)}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">{ins.likes} 赞</span>
+              <span className="text-xs text-slate-400">{ins.favorites} 收藏</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-grid-pattern bg-grid">
       <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-slate-100">
@@ -201,12 +362,111 @@ export function InspirationSquare() {
                 <SlidersHorizontal className="w-4 h-4" />
                 筛选
               </button>
+              {activeTab === 'square' && (
+                <button
+                  onClick={() => setBatchMode(!batchMode)}
+                  className={cn(
+                    'btn-secondary gap-2',
+                    batchMode && 'bg-brand-primary text-white border-brand-primary hover:bg-brand-primary'
+                  )}
+                >
+                  <ListChecks className="w-4 h-4" />
+                  批量整理
+                </button>
+              )}
               <button onClick={() => setShowCreateModal(true)} className="btn-primary gap-2">
                 <Plus className="w-4 h-4" />
                 提交新灵感
               </button>
             </div>
           </div>
+
+          {batchMode && activeTab === 'square' && (
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-4 mb-5 animate-slide-up">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={selectAll}
+                    className="flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-brand-primary transition-colors"
+                  >
+                    {selectedIds.length === filteredInspirations.length ? (
+                      <CheckSquare className="w-5 h-5 text-brand-primary" />
+                    ) : (
+                      <Square className="w-5 h-5 text-slate-400" />
+                    )}
+                    全选
+                  </button>
+                  <span className="text-sm text-slate-600">
+                    已选择 <span className="font-bold text-brand-primary">{selectedIds.length}</span> 个灵感
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-slate-500" />
+                    <input
+                      type="text"
+                      value={batchTagInput}
+                      onChange={(e) => setBatchTagInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleBatchAddTags())}
+                      placeholder="输入标签，逗号分隔"
+                      className="input-field text-sm py-2 px-3 w-48"
+                      disabled={selectedIds.length === 0}
+                    />
+                    <button
+                      onClick={handleBatchAddTags}
+                      className="btn-secondary text-sm gap-1.5"
+                      disabled={selectedIds.length === 0}
+                    >
+                      添加标签
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={batchStatus}
+                      onChange={(e) => { setBatchStatus(e.target.value); }}
+                      className="input-field text-sm py-2 px-3"
+                      disabled={selectedIds.length === 0}
+                    >
+                      <option value="">设置状态</option>
+                      {statusOptions.map((s) => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleBatchSetStatus}
+                      className="btn-secondary text-sm gap-1.5"
+                      disabled={selectedIds.length === 0 || !batchStatus}
+                    >
+                      应用
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowMergeModal(true)}
+                    className="btn-secondary gap-1.5"
+                    disabled={selectedIds.length < 2}
+                  >
+                    <Layers className="w-4 h-4" />
+                    合并为灵感包
+                  </button>
+                  <button
+                    onClick={handleBatchDelete}
+                    className="btn-ghost gap-1.5 text-red-600 hover:bg-red-50 hover:border-red-200"
+                    disabled={selectedIds.length === 0}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    移到回收站
+                  </button>
+                  <button
+                    onClick={exitBatchMode}
+                    className="btn-ghost gap-1.5"
+                  >
+                    <X className="w-4 h-4" />
+                    取消
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-4">
             <div className="relative flex-1 max-w-2xl">
@@ -292,7 +552,7 @@ export function InspirationSquare() {
         <div className="px-8 pb-4 border-t border-slate-100 pt-4">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setActiveTab('square')}
+              onClick={() => { setActiveTab('square'); if (batchMode) exitBatchMode(); }}
               className={cn(
                 'flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-200',
                 activeTab === 'square'
@@ -304,7 +564,7 @@ export function InspirationSquare() {
               广场灵感
             </button>
             <button
-              onClick={() => setActiveTab('recycle')}
+              onClick={() => { setActiveTab('recycle'); if (batchMode) exitBatchMode(); }}
               className={cn(
                 'flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all duration-200',
                 activeTab === 'recycle'
@@ -437,6 +697,10 @@ export function InspirationSquare() {
                 </div>
               );
             })}
+          </div>
+        ) : batchMode ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+            {filteredInspirations.map((ins, index) => renderBatchCard(ins, index))}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
@@ -657,6 +921,47 @@ export function InspirationSquare() {
             <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
               <button onClick={() => setShowCreateModal(false)} className="btn-ghost">取消</button>
               <button onClick={handleSubmit} className="btn-primary">提交灵感</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMergeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-slide-up">
+            <div className="p-6 border-b border-slate-100">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-800">合并为灵感包</h2>
+                <button
+                  onClick={() => setShowMergeModal(false)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">灵感包标题 *</label>
+                <input
+                  type="text"
+                  value={bundleTitle}
+                  onChange={(e) => setBundleTitle(e.target.value)}
+                  placeholder="给灵感包起个名字"
+                  className="input-field"
+                  autoFocus
+                />
+              </div>
+              <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
+                <p className="text-sm text-slate-600">
+                  将合并 <span className="font-bold text-brand-primary">{selectedIds.length}</span> 个灵感，
+                  合并后会生成一个新的灵感包，包含所有选中灵感的标签、图片和描述。
+                </p>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={() => setShowMergeModal(false)} className="btn-ghost">取消</button>
+              <button onClick={handleMergeBundle} className="btn-primary">合并</button>
             </div>
           </div>
         </div>

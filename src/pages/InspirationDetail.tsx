@@ -4,14 +4,16 @@ import {
   ArrowLeft, Heart, Bookmark, Calendar, Users, DollarSign, Link, Image,
   Star, Tag, ShoppingBag, Lightbulb, MessageCircle, Send, Plus, X,
   ExternalLink, Clock, CheckCircle, User, TrendingUp, FlaskConical, Link2,
-  Upload, ChevronLeft, ChevronRight, ZoomIn
+  Upload, ChevronLeft, ChevronRight, ZoomIn, MessageSquare, RotateCcw,
+  UserPlus, Filter, Trash2
 } from 'lucide-react';
 import { useAppStore } from '@/store';
+import { GlobalSearch } from '@/components/layout/GlobalSearch';
 import {
   formatCurrency, formatDateTime, getStatusText, getStatusColor,
   getRelativeTime, cn, getVerdictText, getVerdictColor, fileToDataUrl, generateId
 } from '@/utils/helpers';
-import type { MaterialImageItem } from '@/types';
+import type { MaterialImageItem, AnnotationStatus, AnnotationTargetType } from '@/types';
 
 function ImageFallback() {
   return (
@@ -68,9 +70,10 @@ export function InspirationDetail() {
   const navigate = useNavigate();
 
   const {
-    inspirations, comments, similarCases, products, experiments,
+    inspirations, comments, similarCases, products, experiments, annotations,
     toggleLike, toggleFavorite, addComment, addSimilarCase, updateInspiration,
-    updateImageCaption
+    updateImageCaption, addAnnotation, updateAnnotation, resolveAnnotation,
+    reopenAnnotation, deleteAnnotation
   } = useAppStore();
 
   const [commentText, setCommentText] = useState('');
@@ -87,6 +90,16 @@ export function InspirationDetail() {
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [editingCaption, setEditingCaption] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [showAnnotationMode, setShowAnnotationMode] = useState(false);
+  const [annotationFilter, setAnnotationFilter] = useState<'all' | 'pending' | 'resolved'>('all');
+  const [activeAnnotationTarget, setActiveAnnotationTarget] = useState<{
+    targetType: AnnotationTargetType;
+    targetId: string;
+    label: string;
+  } | null>(null);
+  const [newAnnotationContent, setNewAnnotationContent] = useState('');
+  const [newAnnotationAssignee, setNewAnnotationAssignee] = useState('');
 
   const inspiration = useMemo(
     () => inspirations.find((i) => i.id === id),
@@ -122,6 +135,33 @@ export function InspirationDetail() {
       return item;
     });
   }, [inspiration]);
+
+  const inspirationAnnotations = useMemo(
+    () => annotations.filter((a) => a.inspirationId === id),
+    [annotations, id]
+  );
+
+  const getAnnotationsForTarget = (targetType: AnnotationTargetType, targetId: string) => {
+    return inspirationAnnotations.filter(
+      (a) => a.targetType === targetType && a.targetId === targetId
+    );
+  };
+
+  const getPendingAnnotationCount = (targetType: AnnotationTargetType, targetId: string) => {
+    return inspirationAnnotations.filter(
+      (a) => a.targetType === targetType && a.targetId === targetId && a.status === 'pending'
+    ).length;
+  };
+
+  const filteredAnnotations = useMemo(() => {
+    if (!activeAnnotationTarget) return [];
+    const targetAnnotations = getAnnotationsForTarget(
+      activeAnnotationTarget.targetType,
+      activeAnnotationTarget.targetId
+    );
+    if (annotationFilter === 'all') return targetAnnotations;
+    return targetAnnotations.filter((a) => a.status === annotationFilter);
+  }, [activeAnnotationTarget, annotationFilter, inspirationAnnotations]);
 
   const isGalleryOpen = galleryIndex !== null;
 
@@ -345,6 +385,56 @@ export function InspirationDetail() {
     }
   };
 
+  const handleImageAnnotationClick = (e: React.MouseEvent, img: MaterialImageItem, idx: number) => {
+    e.stopPropagation();
+    setActiveAnnotationTarget({
+      targetType: 'image',
+      targetId: img.id,
+      label: img.caption || `素材图片 ${idx + 1}`
+    });
+  };
+
+  const handleLinkAnnotationClick = (e: React.MouseEvent, url: string, idx: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveAnnotationTarget({
+      targetType: 'link',
+      targetId: `link-${idx}`,
+      label: url
+    });
+  };
+
+  const handleAddAnnotation = () => {
+    if (!activeAnnotationTarget || !newAnnotationContent.trim()) return;
+    addAnnotation({
+      inspirationId: inspiration.id,
+      targetType: activeAnnotationTarget.targetType,
+      targetId: activeAnnotationTarget.targetId,
+      content: newAnnotationContent.trim(),
+      assigneeName: newAnnotationAssignee.trim()
+    });
+    setNewAnnotationContent('');
+    setNewAnnotationAssignee('');
+  };
+
+  const handleResolveAnnotation = (annotationId: string) => {
+    resolveAnnotation(annotationId);
+  };
+
+  const handleReopenAnnotation = (annotationId: string) => {
+    reopenAnnotation(annotationId);
+  };
+
+  const handleDeleteAnnotation = (annotationId: string) => {
+    deleteAnnotation(annotationId);
+  };
+
+  const closeAnnotationPanel = () => {
+    setActiveAnnotationTarget(null);
+    setNewAnnotationContent('');
+    setNewAnnotationAssignee('');
+  };
+
   const currentGalleryImage = galleryIndex !== null ? materialImages[galleryIndex] : null;
 
   return (
@@ -366,7 +456,10 @@ export function InspirationDetail() {
               <p className="text-xs text-slate-500">创建于 {formatDateTime(inspiration.createdAt)}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-56">
+              <GlobalSearch compact />
+            </div>
             <button
               onClick={() => toggleLike(inspiration.id)}
               className={cn(
@@ -458,14 +551,52 @@ export function InspirationDetail() {
           </div>
 
           <div className="card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="flex items-center gap-2 font-bold text-slate-800">
-                <Image className="w-5 h-5 text-indigo-500" />
-                素材图片
-                {materialImages.length > 0 && (
-                  <span className="text-sm font-normal text-slate-400">({materialImages.length})</span>
-                )}
-              </h3>
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h3 className="flex items-center gap-2 font-bold text-slate-800">
+                  <Image className="w-5 h-5 text-indigo-500" />
+                  素材图片
+                  {materialImages.length > 0 && (
+                    <span className="text-sm font-normal text-slate-400">({materialImages.length})</span>
+                  )}
+                </h3>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showAnnotationMode}
+                    onChange={(e) => setShowAnnotationMode(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="relative w-9 h-5 bg-slate-200 peer-checked:bg-indigo-500 rounded-full transition-colors">
+                    <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform peer-checked:translate-x-4" />
+                  </div>
+                  <span className="flex items-center gap-1 text-sm text-slate-600">
+                    <MessageSquare className="w-4 h-4" />
+                    批注模式
+                  </span>
+                </label>
+              </div>
+              {showAnnotationMode && (
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-slate-400" />
+                  <div className="flex gap-1">
+                    {(['all', 'pending', 'resolved'] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        onClick={() => setAnnotationFilter(filter)}
+                        className={cn(
+                          'px-3 py-1 text-xs font-medium rounded-full transition-colors',
+                          annotationFilter === filter
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        )}
+                      >
+                        {filter === 'all' ? '全部' : filter === 'pending' ? '未处理' : '已解决'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <button
                 onClick={handleUploadClick}
                 className="btn-ghost text-sm py-1.5 gap-1.5"
@@ -484,36 +615,64 @@ export function InspirationDetail() {
             />
             {materialImages.length > 0 && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                {materialImages.map((img, idx) => (
-                  <div key={img.id} className="group">
-                    <div
-                      className="relative aspect-square rounded-xl overflow-hidden bg-slate-100 cursor-pointer ring-2 ring-transparent hover:ring-indigo-300 transition-all"
-                      onClick={() => openGallery(idx)}
-                    >
-                      <ThumbnailImage src={img.url} alt={img.caption || `素材${idx + 1}`} />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
-                        <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
-                      </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveImage(img.id);
+                {materialImages.map((img, idx) => {
+                  const pendingCount = getPendingAnnotationCount('image', img.id);
+                  return (
+                    <div key={img.id} className="group relative">
+                      <div
+                        className={cn(
+                          'relative aspect-square rounded-xl overflow-hidden bg-slate-100 cursor-pointer ring-2 transition-all',
+                          showAnnotationMode
+                            ? 'ring-amber-200 hover:ring-amber-400'
+                            : 'ring-transparent hover:ring-indigo-300'
+                        )}
+                        onClick={() => {
+                          if (showAnnotationMode) {
+                            setActiveAnnotationTarget({
+                              targetType: 'image',
+                              targetId: img.id,
+                              label: img.caption || `素材图片 ${idx + 1}`
+                            });
+                          } else {
+                            openGallery(idx);
+                          }
                         }}
-                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-500"
                       >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                        <ThumbnailImage src={img.url} alt={img.caption || `素材${idx + 1}`} />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                          {showAnnotationMode ? (
+                            <MessageSquare className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                          ) : (
+                            <ZoomIn className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                          )}
+                        </div>
+                        {pendingCount > 0 && (
+                          <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs font-bold shadow-md">
+                            <MessageSquare className="w-3 h-3" />
+                            {pendingCount}
+                          </div>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveImage(img.id);
+                          }}
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-500"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {img.caption && (
+                        <p
+                          className="mt-1.5 text-xs text-slate-500 truncate"
+                          title={img.caption}
+                        >
+                          {img.caption}
+                        </p>
+                      )}
                     </div>
-                    {img.caption && (
-                      <p
-                        className="mt-1.5 text-xs text-slate-500 truncate"
-                        title={img.caption}
-                      >
-                        {img.caption}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             <div className="flex gap-2">
@@ -542,25 +701,60 @@ export function InspirationDetail() {
               {inspiration.referenceLinks.length === 0 ? (
                 <p className="text-center text-sm text-slate-400 py-4">暂无参考链接，点击下方添加</p>
               ) : (
-                inspiration.referenceLinks.map((url, idx) => (
-                  <div key={idx} className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-indigo-50 group transition-colors">
-                    <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-slate-600 hover:text-brand-primary truncate flex-1"
+                inspiration.referenceLinks.map((url, idx) => {
+                  const pendingCount = getPendingAnnotationCount('link', `link-${idx}`);
+                  return (
+                    <div
+                      key={idx}
+                      className={cn(
+                        'flex items-center gap-2 p-3 rounded-xl group transition-colors relative',
+                        showAnnotationMode
+                          ? 'bg-amber-50 hover:bg-amber-100 cursor-pointer'
+                          : 'bg-slate-50 hover:bg-indigo-50'
+                      )}
+                      onClick={() => {
+                        if (showAnnotationMode) {
+                          setActiveAnnotationTarget({
+                            targetType: 'link',
+                            targetId: `link-${idx}`,
+                            label: url
+                          });
+                        }
+                      }}
                     >
-                      {url}
-                    </a>
-                    <button
-                      onClick={() => handleRemoveLink(idx)}
-                      className="text-slate-300 hover:text-rose-500 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))
+                      <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
+                      {showAnnotationMode ? (
+                        <span className="text-sm text-slate-600 truncate flex-1">
+                          {url}
+                        </span>
+                      ) : (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm text-slate-600 hover:text-brand-primary truncate flex-1"
+                        >
+                          {url}
+                        </a>
+                      )}
+                      {pendingCount > 0 && (
+                        <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs font-bold shrink-0">
+                          <MessageSquare className="w-3 h-3" />
+                          {pendingCount}
+                        </div>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveLink(idx);
+                        }}
+                        className="text-slate-300 hover:text-rose-500 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })
               )}
             </div>
             <div className="flex gap-2">
@@ -967,6 +1161,174 @@ export function InspirationDetail() {
           )}
         </div>
       </div>
+
+      {activeAnnotationTarget && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center"
+          onClick={closeAnnotationPanel}
+        >
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-2xl overflow-hidden animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-indigo-500" />
+                <h3 className="font-bold text-slate-800">批注详情</h3>
+              </div>
+              <button
+                onClick={closeAnnotationPanel}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+              <p className="text-xs text-slate-500 mb-1">目标</p>
+              <p className="text-sm text-slate-700 font-medium truncate" title={activeAnnotationTarget.label}>
+                {activeAnnotationTarget.label}
+              </p>
+            </div>
+
+            <div className="flex gap-2 px-4 py-3 border-b border-slate-100">
+              {(['all', 'pending', 'resolved'] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setAnnotationFilter(filter)}
+                  className={cn(
+                    'px-3 py-1 text-xs font-medium rounded-full transition-colors',
+                    annotationFilter === filter
+                      ? 'bg-indigo-500 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  )}
+                >
+                  {filter === 'all' ? '全部' : filter === 'pending' ? '未处理' : '已解决'}
+                </button>
+              ))}
+            </div>
+
+            <div className="max-h-80 overflow-y-auto">
+              {filteredAnnotations.length === 0 ? (
+                <div className="py-12 text-center">
+                  <MessageSquare className="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                  <p className="text-sm text-slate-400">暂无批注</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {filteredAnnotations.map((annotation) => (
+                    <div key={annotation.id} className="p-4 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <img
+                          src={annotation.authorAvatar}
+                          alt={annotation.authorName}
+                          className="w-8 h-8 rounded-full bg-indigo-100 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-semibold text-slate-700 text-sm">
+                              {annotation.authorName}
+                            </span>
+                            <span className={cn(
+                              'px-2 py-0.5 text-xs font-medium rounded-full',
+                              annotation.status === 'pending'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-emerald-100 text-emerald-700'
+                            )}>
+                              {annotation.status === 'pending' ? '未处理' : '已解决'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-600 leading-relaxed mb-2">
+                            {annotation.content}
+                          </p>
+                          {annotation.assigneeName && (
+                            <div className="flex items-center gap-1 mb-2">
+                              <UserPlus className="w-3 h-3 text-slate-400" />
+                              <span className="text-xs text-slate-500">
+                                指派给：{annotation.assigneeName}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-400">
+                              {getRelativeTime(annotation.createdAt)}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              {annotation.status === 'pending' ? (
+                                <button
+                                  onClick={() => handleResolveAnnotation(annotation.id)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                >
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  解决
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleReopenAnnotation(annotation.id)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" />
+                                  重新打开
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteAnnotation(annotation.id)}
+                                className="flex items-center gap-1 px-2 py-1 text-xs text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50">
+              <div className="flex gap-2 mb-2">
+                <img
+                  src="https://api.dicebear.com/7.x/avataaars/svg?seed=current"
+                  alt="我"
+                  className="w-8 h-8 rounded-full bg-indigo-100 shrink-0"
+                />
+                <div className="flex-1">
+                  <textarea
+                    value={newAnnotationContent}
+                    onChange={(e) => setNewAnnotationContent(e.target.value)}
+                    placeholder="添加批注..."
+                    rows={2}
+                    className="input-field resize-none text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-1">
+                  <UserPlus className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={newAnnotationAssignee}
+                    onChange={(e) => setNewAnnotationAssignee(e.target.value)}
+                    placeholder="指派给（可选）"
+                    className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-transparent"
+                  />
+                </div>
+                <button
+                  onClick={handleAddAnnotation}
+                  disabled={!newAnnotationContent.trim()}
+                  className="btn-primary gap-1.5 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Send className="w-4 h-4" />
+                  发送
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isGalleryOpen && currentGalleryImage && (
         <div
